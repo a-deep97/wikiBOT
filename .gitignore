@@ -1,2 +1,4 @@
 ml/data
 ml/checkpoints
+credentials.py
+ml/gen_checkpoints
