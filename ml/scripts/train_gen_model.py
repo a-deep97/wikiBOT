@@ -9,7 +9,7 @@ from transformers import (
 )
 
 # Load dataset
-data_path = "ml/data/gen_qa_dataset"
+data_path = "ml/data/gen_dataset"
 dataset = load_from_disk(data_path)
 train_dataset = dataset.shuffle(seed=42).select(range(int(0.9 * len(dataset))))
 eval_dataset = dataset.shuffle(seed=42).select(range(int(0.1 * len(dataset))))

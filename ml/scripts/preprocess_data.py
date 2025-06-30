@@ -34,5 +34,5 @@ def preprocess_for_generation(input_path, output_path):
 if __name__ == "__main__":
     preprocess_for_generation(
         input_path="ml/data/wikipedia_dataset.json",
-        output_path="ml/data/gen_qa_dataset"
+        output_path="ml/data/gen_dataset"
     )
