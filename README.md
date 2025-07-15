@@ -20,6 +20,7 @@
    ```bash
    python -m ml.scripts.wikipedia_crawler
 Creates a text file with a list of fetched Wikipedia topics.
+(You can write your own script to fetch topics smartly)
 
 2. **Sample Wikipedia Content**  
    ```bash
