@@ -41,6 +41,6 @@ def preprocess_for_generation(input_dir, output_path):
 
 if __name__ == "__main__":
     preprocess_for_generation(
-        input_dir="ml/data/training_data",
+        input_dir="ml/data/wiki_articles/",
         output_path="ml/data/gen_dataset"
 )

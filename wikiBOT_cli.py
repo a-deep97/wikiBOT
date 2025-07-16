@@ -5,7 +5,7 @@ from transformers import T5Tokenizer, T5ForConditionalGeneration
 from credentials import contact_email
 
 # Load model and tokenizer
-MODEL_DIR = "ml/gen_checkpoints/checkpoint-669"  
+MODEL_DIR = "ml/gen_checkpoints/checkpoint-3288"  
 tokenizer = T5Tokenizer.from_pretrained(MODEL_DIR)
 model = T5ForConditionalGeneration.from_pretrained(MODEL_DIR)
 model.eval()

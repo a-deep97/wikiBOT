@@ -27,6 +27,11 @@ Creates a text file with a list of fetched Wikipedia topics.
    python -m ml.scripts.data_sampler
 Creates a text file with a list of fetched Wikipedia topics.
 
+3. **Generate QA pairs**
+   1. Install the en_core_web_sm model
+   ```bash
+   python -m spacy download en_core_web_sm
+
 3. **Preprocess Dataset**  
    ```bash
    python -m ml.scripts.preprocess_data

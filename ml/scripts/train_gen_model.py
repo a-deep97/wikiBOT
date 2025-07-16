@@ -59,6 +59,5 @@ trainer = Seq2SeqTrainer(
     data_collator=data_collator
 )
 
-# 🚀 Train the model
 if __name__ == "__main__":
     trainer.train()
