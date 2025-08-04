@@ -5,7 +5,7 @@ import torch
 from tqdm import tqdm
 from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
 
-# --- Config ---
+# --- Configuration ---
 input_dir = "ml/data/wiki_articles"
 output_dir = "ml/data/wiki_qa_pairs"
 os.makedirs(output_dir, exist_ok=True)
@@ -14,25 +14,30 @@ CHUNK_SIZE = 5000
 MAX_QA_PER_ARTICLE = 10
 MAX_INPUT_TOKENS = 512
 
-# --- Load resources ---
+# --- Load spaCy for answer span extraction ---
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    import subprocess
+    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
+    nlp = spacy.load("en_core_web_sm")
+
+# --- Load QA generation model ---
 print("CUDA available:", torch.cuda.is_available())
 device = 0 if torch.cuda.is_available() else -1
 device_str = "cuda" if device == 0 else "cpu"
-device = -1  # Force CPU
 
-model_name = "valhalla/t5-base-qg-hl"
+model_name = "iarfmoose/t5-base-question-generator"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to("cpu")
-qa_generator = pipeline("text2text-generation", model=model, tokenizer=tokenizer, device=-1)
+model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(device_str)
+qa_pipeline = pipeline("text2text-generation", model=model, tokenizer=tokenizer, device=device)
 
-nlp = spacy.load("en_core_web_sm")
-
-# --- Answer extraction ---
+# --- Helper: extract noun phrases as answers ---
 def extract_answers(text, max_answers=5):
     doc = nlp(text)
     return list({chunk.text.strip() for chunk in doc.noun_chunks})[:max_answers]
 
-# --- QA generation ---
+# --- Generate question-answer pairs ---
 def generate_qa_pairs(text, max_qas=10):
     answers = extract_answers(text, max_qas)
     qa_pairs = []
@@ -44,20 +49,20 @@ def generate_qa_pairs(text, max_qas=10):
         prompt = f"generate question: {highlighted}"
 
         try:
-            result = qa_generator(prompt, max_length=64, do_sample=False)[0]['generated_text']
-            qa_pairs.append({"question": result, "answer": ans})
+            output = qa_pipeline(prompt, max_length=64, do_sample=False)[0]['generated_text']
+            qa_pairs.append({"question": output.strip(), "answer": ans})
         except Exception as e:
             print("Error generating QA:", e)
 
     return qa_pairs
 
-# --- Save QA pair ---
+# --- Incremental saving ---
 def save_pair(pair, file_index):
     output_path = os.path.join(output_dir, f"wiki_qa_dataset_{file_index}.jsonl")
     with open(output_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(pair, ensure_ascii=False) + "\n")
 
-# --- Main execution ---
+# --- Main loop ---
 file_index = 0
 pair_count = 0
 
@@ -67,10 +72,10 @@ for filename in input_files:
         articles = json.load(f)
 
     for title, content in tqdm(articles.items(), desc=f"Processing {filename}"):
-        chunks = [content]  # You can split into smaller chunks here if needed
         qa_collected = 0
+        text_chunks = [content]  # You can split chunks if needed
 
-        for chunk in chunks:
+        for chunk in text_chunks:
             if qa_collected >= MAX_QA_PER_ARTICLE:
                 break
 
@@ -88,8 +93,7 @@ for filename in input_files:
                 qa_collected += 1
 
                 if pair_count >= CHUNK_SIZE:
-                    print(f"--- Switched to new file: index {file_index + 1} ---")
                     file_index += 1
                     pair_count = 0
 
-print("All QA pairs generated and saved incrementally.")
+print("✅ All QA pairs generated and saved incrementally.")
