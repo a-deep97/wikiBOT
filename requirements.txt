@@ -13,3 +13,5 @@ wikipedia-api==0.6.0
 sentencepiece
 tqdm
 spacy
+keybert
+spacy
