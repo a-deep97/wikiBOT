@@ -1,0 +1,14 @@
+click
+wikipedia-api
+requests
+beautifulsoup4
+
+numpy
+faiss-cpu
+
+sentence-transformers
+transformers
+torch
+huggingface-hub
+
+python-dotenv
