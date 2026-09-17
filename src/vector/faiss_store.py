@@ -8,19 +8,12 @@ class FAISSStore:
     """
 
     def __init__(self, dimension: int):
-        """
-        Create a FAISS vector store.
-
-        Args:
-            dimension: Dimension of the embedding vectors.
-        """
-
         self.dimension = dimension
 
-        # L2 distance index.
-        self.index = faiss.IndexFlatL2(dimension)
+        # Inner product on normalized vectors = cosine similarity
+        self.index = faiss.IndexFlatIP(dimension)
 
-        # Keep the original text corresponding to each vector.
+        # Keep the original documents corresponding to vectors
         self.documents = []
 
     def add(
@@ -30,10 +23,6 @@ class FAISSStore:
     ):
         """
         Add document embeddings to the FAISS index.
-
-        Args:
-            embeddings: Embedding vectors.
-            documents: Original text corresponding to each vector.
         """
 
         if len(embeddings) != len(documents):
@@ -46,23 +35,19 @@ class FAISSStore:
             dtype="float32"
         )
 
+        # Normalize vectors for cosine similarity
+        faiss.normalize_L2(embeddings)
+
         self.index.add(embeddings)
         self.documents.extend(documents)
 
     def search(
         self,
         query_embedding: np.ndarray,
-        top_k: int = 3
+        top_k: int = 2
     ) -> list[str]:
         """
-        Find the most relevant documents.
-
-        Args:
-            query_embedding: Embedding of the user's question.
-            top_k: Number of documents to retrieve.
-
-        Returns:
-            List of relevant documents.
+        Search for the most similar documents.
         """
 
         if self.index.ntotal == 0:
@@ -75,7 +60,10 @@ class FAISSStore:
 
         query_embedding = query_embedding.reshape(1, -1)
 
-        distances, indices = self.index.search(
+        # Normalize query for cosine similarity
+        faiss.normalize_L2(query_embedding)
+
+        _, indices = self.index.search(
             query_embedding,
             min(top_k, self.index.ntotal)
         )
@@ -89,8 +77,4 @@ class FAISSStore:
         return results
 
     def size(self) -> int:
-        """
-        Return the number of stored vectors.
-        """
-
         return self.index.ntotal
