@@ -86,7 +86,7 @@ class Model:
     def generate(
         self,
         prompt: str,
-        max_new_tokens: int = 50
+        max_new_tokens: int = 100
     ) -> str:
 
         try:
