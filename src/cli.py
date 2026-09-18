@@ -1,6 +1,6 @@
 import click
 
-from .data.wikipedia import fetch_wikipedia_text
+from .data.wikipedia import fetch_wikipedia_article
 from .data.processor import chunk_text
 from .embeddings.embedder import Embedder
 from .vector.faiss_store import FAISSStore
@@ -24,9 +24,9 @@ def askwiki():
             title = click.prompt("Enter Wikipedia Page Title")
 
             try:
-                text = fetch_wikipedia_text(title)
+                article = fetch_wikipedia_article(title)
 
-                chunks = chunk_text(text)
+                chunks = chunk_text(article)
 
                 if not chunks:
                     raise ValueError(
