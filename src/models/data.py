@@ -4,7 +4,7 @@ AVAILABLE_MODELS = {
         "type": "causal",
     },
     "flan": {
-        "name": "google/flan-t5-base",
+        "name": "google/flan-t5-large",
         "type": "seq2seq",
     },
     "mistral": {
