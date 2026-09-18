@@ -1,5 +1,7 @@
 import click
 
+from src.models.data import AVAILABLE_MODELS, DEFAULT_MODEL, DEFAULT_MODEL
+
 from .data.wikipedia import fetch_wikipedia_article
 from .data.processor import chunk_text
 from .embeddings.embedder import Embedder
@@ -15,12 +17,54 @@ knowledge_manager = KnowledgeManager(
     database
 )
 
+def select_model() -> str:
+    print("\nAvailable models:")
+    print("-----------------")
+
+    model_keys = list(AVAILABLE_MODELS.keys())
+
+    for index, key in enumerate(model_keys, start=1):
+        model = AVAILABLE_MODELS[key]
+
+        default_marker = (
+            " (default)"
+            if key == DEFAULT_MODEL
+            else ""
+        )
+
+        print(
+            f"{index}. {key} - "
+            f"{model['name']}"
+            f"{default_marker}"
+        )
+
+    print()
+
+    while True:
+        selection = input(
+            f"Select model [{DEFAULT_MODEL}]: "
+        ).strip()
+
+        # Enter → default model
+        if not selection:
+            return DEFAULT_MODEL
+
+        if selection in AVAILABLE_MODELS:
+            return selection
+
+        print(
+            f"Invalid selection '{selection}'. "
+            f"Choose one of: "
+            f"{', '.join(model_keys)}"
+        )
+        
 @click.command()
 def askwiki():
     click.secho("wikiBot (CLI)", fg="cyan", bold=True)
 
     embedder = Embedder()
-    llm = Model()
+    model_key = select_model()
+    llm = Model(model_key)
 
     rag_pipeline = None
     title = None

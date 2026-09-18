@@ -13,4 +13,4 @@ AVAILABLE_MODELS = {
     },
 }
 
-DEFAULT_MODEL = "qwen"
+DEFAULT_MODEL = next(iter(AVAILABLE_MODELS))
