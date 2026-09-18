@@ -32,8 +32,7 @@ Thumbs.db
 
 # Project data
 
-data/raw/*
-data/processed/*
+data/
 
 # Vector database / indexes
 

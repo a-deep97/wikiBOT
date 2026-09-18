@@ -6,7 +6,14 @@ from .embeddings.embedder import Embedder
 from .vector.faiss_store import FAISSStore
 from .models.model import Model
 from .pipeline import RAGPipeline
+from .database.sqlite_store import SQLiteStore
+from .knowledge.manager import KnowledgeManager
 
+database = SQLiteStore()
+
+knowledge_manager = KnowledgeManager(
+    database
+)
 
 @click.command()
 def askwiki():
@@ -24,16 +31,23 @@ def askwiki():
             title = click.prompt("Enter Wikipedia Page Title")
 
             try:
-                article = fetch_wikipedia_article(title)
-
-                chunks = chunk_text(article)
+                chunks = knowledge_manager.get_article(
+                    title
+                )
 
                 if not chunks:
                     raise ValueError(
                         "Wikipedia article did not produce any chunks."
                     )
 
-                embeddings = embedder.embed_documents(chunks)
+                chunk_texts = [
+                    chunk["content"]
+                    for chunk in chunks
+                ]
+
+                embeddings = embedder.embed_documents(
+                    chunk_texts
+                )
 
                 dimension = embeddings.shape[1]
 

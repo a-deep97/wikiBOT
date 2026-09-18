@@ -5,7 +5,6 @@ def clean_text(text: str) -> str:
     """
     Clean Wikipedia text.
     """
-    # Replace multiple whitespace characters with one space.
     text = re.sub(r"\s+", " ", text)
 
     return text.strip()
@@ -16,13 +15,16 @@ def chunk_section(
     section_text: str,
     chunk_size: int = 800,
     chunk_overlap: int = 100
-) -> list[str]:
+) -> list[dict]:
     """
-    Split one Wikipedia section into chunks.
+    Split one section into chunks.
 
-    The section title is included in every chunk so that
-    the embedding contains information about the context.
+    Returns structured chunks containing:
+        - section
+        - chunk_index
+        - content
     """
+
     if chunk_size <= 0:
         raise ValueError(
             "chunk_size must be greater than 0."
@@ -46,6 +48,8 @@ def chunk_section(
     chunks = []
 
     start = 0
+    chunk_index = 0
+
     step = chunk_size - chunk_overlap
 
     while start < len(section_text):
@@ -55,12 +59,16 @@ def chunk_section(
         text = section_text[start:end].strip()
 
         if text:
-            chunk = (
-                f"Section: {section_title}\n"
-                f"{text}"
-            )
+            chunks.append({
+                "section": section_title,
+                "chunk_index": chunk_index,
+                "content": (
+                    f"Section: {section_title}\n"
+                    f"{text}"
+                )
+            })
 
-            chunks.append(chunk)
+            chunk_index += 1
 
         start += step
 
@@ -68,50 +76,41 @@ def chunk_section(
 
 
 def chunk_text(
-    article: dict,
+    articles: list[dict],
     chunk_size: int = 800,
     chunk_overlap: int = 100
-) -> list[str]:
-    """
-    Convert a structured Wikipedia article into chunks.
-
-    Expected article format:
-
-        {
-            "title": "...",
-            "sections": [
-                {
-                    "title": "...",
-                    "text": "..."
-                }
-            ]
-        }
-    """
-    if not article:
-        return []
-
-    sections = article.get("sections", [])
-
-    if not sections:
-        return []
+) -> list[dict]:
 
     chunks = []
 
-    for section in sections:
+    for article in articles:
 
-        section_title = section.get("title", "").strip()
-        section_text = section.get("text", "").strip()
+        article_title = article.get("title", "")
 
-        if not section_text:
-            continue
+        sections = article.get("sections", [])
 
-        section_chunks = chunk_section(
-            section_title=section_title,
-            section_text=section_text,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
-        )
+        for section in sections:
 
-        chunks.extend(section_chunks)
+            section_title = section.get("title", "")
+            section_text = section.get("text", "")
+
+            if not section_text:
+                continue
+
+            section_chunks = chunk_section(
+                section_title=section_title,
+                section_text=section_text,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap
+            )
+
+            for chunk in section_chunks:
+
+                chunk["content"] = (
+                    f"Article: {article_title}\n"
+                    f"{chunk['content']}"
+                )
+
+                chunks.append(chunk)
 
     return chunks

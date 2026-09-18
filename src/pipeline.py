@@ -61,13 +61,13 @@ class RAGPipeline:
     def build_prompt(
         self,
         question: str,
-        context: list[str]
-        ) -> str:
-        """
-        Build the prompt sent to the LLM.
-        """
+        context: list[dict]
+    ) -> str:
 
-        context_text = "\n\n".join(context)
+        context_text = "\n\n".join(
+            chunk["content"]
+            for chunk in context
+        )
 
         prompt = f"""
             Question: {question}
@@ -84,17 +84,16 @@ class RAGPipeline:
         return prompt.strip()
 
     def ask(self, question: str) -> str:
-        """
-        Retrieve relevant context and generate an answer.
-
-        Args:
-            question: User's question.
-
-        Returns:
-            Generated answer.
-        """
 
         context = self.retrieve(question)
+
+        print("\n--- Retrieved Context ---")
+
+        for i, chunk in enumerate(context):
+            print(f"\n[Chunk {i + 1}]")
+            print(chunk["content"][:500])
+
+        print("\n-------------------------")
 
         if not context:
             return "I could not find relevant information."
@@ -103,5 +102,9 @@ class RAGPipeline:
             question,
             context
         )
+
+        print("\n--- Prompt ---")
+        print(prompt)
+        print("\n--------------")
 
         return self.llm.generate(prompt)

@@ -4,49 +4,68 @@ A simple Retrieval-Augmented Generation (RAG) application that uses **Wikipedia 
 
 The first version is intentionally designed as a **CLI application**. The goal is to understand the core RAG pipeline before introducing additional frameworks or a web UI.
 
+---
+
 ## Overview
 
 The application follows this flow:
 
 ```text
-Wikipedia
-    │
-    ▼
-Fetch Documents
-    │
-    ▼
-Process & Chunk Text
-    │
-    ▼
-Generate Embeddings
-    │
-    ▼
-FAISS Vector Store
-    │
-    │
-    └──────────────┐
-                   │
-User Question     │
-    │              │
-    ▼              │
-Generate Query     │
-Embedding          │
-    │              │
-    ▼              │
-FAISS Retrieval ◄──┘
-    │
-    ▼
+                         Wikipedia
+                            │
+                            ▼
+                    Fetch Documents
+                            │
+                            ▼
+                   Process & Chunk Text
+                            │
+                            ▼
+                    SQLite Knowledge Store
+                            │
+                            ▼
+                    Generate Embeddings
+                            │
+                            ▼
+                     FAISS Vector Store
+                            │
+                            │
+                            └──────────────┐
+                                           │
+User Question                             │
+      │                                    │
+      ▼                                    │
+Generate Query                             │
+Embedding                                  │
+      │                                    │
+      ▼                                    │
+FAISS Retrieval ◄──────────────────────────┘
+      │
+      ▼
 Relevant Context
-    │
-    ▼
+      │
+      ▼
 Prompt + Context
-    │
-    ▼
+      │
+      ▼
 Open-Source LLM
-    │
-    ▼
+      │
+      ▼
 Answer
 ```
+
+SQLite and FAISS have different responsibilities:
+
+```text
+SQLite
+"What knowledge do we already have?"
+
+FAISS
+"Which knowledge is relevant to this question?"
+```
+
+SQLite acts as the persistent local knowledge store, while FAISS is used for semantic retrieval.
+
+---
 
 ## Goals
 
@@ -60,6 +79,8 @@ The main goals of this project are to understand:
 * Semantic search
 * Prompt construction
 * Open-source LLM inference
+* Persistent knowledge storage
+* Caching retrieved documents
 * How retrieval and generation work together
 
 The initial implementation avoids unnecessary complexity and does not require LangChain.
@@ -71,12 +92,12 @@ LangChain can be introduced later to compare its abstractions with the manually 
 ## Project Structure
 
 ```text
-wiki-rag/
+wikiBOT/
 │
-├── app/
+├── src/
 │   ├── __init__.py
 │   ├── cli.py
-│   ├── config.py
+│   ├── pipeline.py
 │   │
 │   ├── data/
 │   │   ├── __init__.py
@@ -87,52 +108,53 @@ wiki-rag/
 │   │   ├── __init__.py
 │   │   └── embedder.py
 │   │
-│   ├── vectorstore/
+│   ├── vector/
 │   │   ├── __init__.py
 │   │   └── faiss_store.py
 │   │
-│   ├── llm/
+│   ├── models/
 │   │   ├── __init__.py
 │   │   └── model.py
 │   │
-│   └── rag/
+│   ├── database/
+│   │   ├── __init__.py
+│   │   └── sqlite_store.py
+│   │
+│   └── knowledge/
 │       ├── __init__.py
-│       └── pipeline.py
+│       └── manager.py
 │
 ├── data/
-│   ├── raw/
-│   └── processed/
-│
-├── models/
-│
-├── vector_db/
+│   └── wikibot.db
 │
 ├── tests/
+│   └── test_database.py
 │
 ├── requirements.txt
-├── pyproject.toml
 └── README.md
 ```
 
+---
+
 ## Module Responsibilities
 
-### `app/cli.py`
+### `src/cli.py`
 
 Provides the command-line interface using **Click**.
 
-Example commands:
+The CLI is responsible for:
 
-```bash
-wiki-rag fetch "Artificial Intelligence"
-wiki-rag index
-wiki-rag ask "What is artificial intelligence?"
-```
+* Getting the Wikipedia topic from the user
+* Accepting questions
+* Starting a new topic
+* Exiting the application
+* Displaying answers
 
 The CLI should only handle user interaction and invoke the appropriate application components.
 
 ---
 
-### `app/data/wikipedia.py`
+### `src/data/wikipedia.py`
 
 Responsible for fetching data from Wikipedia.
 
@@ -140,8 +162,10 @@ Responsibilities:
 
 * Query Wikipedia
 * Retrieve article content
-* Extract title and text
-* Store raw documents
+* Extract article title
+* Extract introduction
+* Extract sections
+* Extract links to other Wikipedia articles
 
 Example:
 
@@ -149,36 +173,51 @@ Example:
 Wikipedia
     ↓
 Article
-    ↓
-Raw document
+    ├── Title
+    ├── Introduction
+    ├── Sections
+    └── Links
 ```
+
+Unnecessary sections such as references and external links can be excluded during processing.
 
 ---
 
-### `app/data/processor.py`
+### `src/data/processor.py`
 
 Responsible for preparing documents for embedding.
 
 Responsibilities:
 
 * Clean text
-* Remove unnecessary content
+* Remove unnecessary whitespace
 * Split documents into smaller chunks
 * Maintain document metadata
+
+Each chunk contains metadata such as:
+
+```text
+Article
+Section
+Chunk Index
+Content
+```
 
 Example:
 
 ```text
-Wikipedia Article
-       ↓
-Clean Text
-       ↓
-Chunks
+Article: Python
+
+Section: History
+
+Python was created by Guido van Rossum...
 ```
+
+This metadata will later allow the application to identify the source of retrieved information.
 
 ---
 
-### `app/embeddings/embedder.py`
+### `src/embeddings/embedder.py`
 
 Responsible for converting text into numerical vectors.
 
@@ -186,27 +225,34 @@ Example:
 
 ```text
 Text
- ↓
+  ↓
 Embedding Model
- ↓
+  ↓
 Vector
 ```
 
-A Sentence Transformers model can be used initially.
+The current implementation uses:
+
+```text
+sentence-transformers/all-MiniLM-L6-v2
+```
+
+The model generates 384-dimensional embeddings.
 
 ---
 
-### `app/vectorstore/faiss_store.py`
+### `src/vector/faiss_store.py`
 
 Responsible for managing the FAISS vector index.
 
 Responsibilities:
 
 * Add embeddings
-* Store document metadata
-* Save the index
-* Load the index
+* Store document/chunk metadata
 * Perform similarity searches
+* Return the most relevant chunks
+
+The current implementation uses normalized vectors with inner-product similarity, which is equivalent to cosine similarity.
 
 Example:
 
@@ -218,9 +264,11 @@ Query Vector
 Top-K Relevant Chunks
 ```
 
+FAISS is responsible for **semantic retrieval**, not persistent knowledge storage.
+
 ---
 
-### `app/llm/model.py`
+### `src/models/model.py`
 
 Responsible for loading and interacting with the open-source LLM.
 
@@ -231,59 +279,102 @@ Responsibilities:
 * Generate responses
 * Hide model-specific implementation details from the rest of the application
 
-The rest of the application should interact with the LLM through a simple interface such as:
+The rest of the application interacts with the model through a simple interface such as:
 
 ```python
-llm.generate(prompt)
+model.generate(prompt)
+```
+
+The current implementation uses a Hugging Face Transformers model.
+
+---
+
+### `src/database/sqlite_store.py`
+
+Responsible for persistent local storage.
+
+SQLite stores the processed Wikipedia knowledge so that articles do not need to be downloaded and processed every time they are requested.
+
+The database is stored at:
+
+```text
+data/wikibot.db
+```
+
+The database contains three main tables:
+
+#### `articles`
+
+Stores article information:
+
+```text
+id
+title
+fetched_at
+```
+
+#### `chunks`
+
+Stores processed article chunks:
+
+```text
+id
+article_id
+section
+chunk_index
+content
+```
+
+#### `links`
+
+Stores links between Wikipedia articles:
+
+```text
+id
+source_article_id
+target_title
+```
+
+The relationship is:
+
+```text
+Article
+   │
+   ├── Chunks
+   │
+   └── Links → Other Wikipedia Articles
 ```
 
 ---
 
-### `app/rag/pipeline.py`
+### `src/knowledge/manager.py`
 
-This is the main RAG orchestration layer.
+The Knowledge Manager controls how wikiBOT obtains knowledge.
 
-It connects:
-
-* Query embedding
-* Vector retrieval
-* Context construction
-* Prompt construction
-* LLM generation
+Its main responsibility is to decide whether to use the local SQLite cache or fetch information from Wikipedia.
 
 The basic flow is:
 
 ```text
-User Question
-      ↓
-Query Embedding
-      ↓
-FAISS Search
-      ↓
-Relevant Documents
-      ↓
-Build Prompt
-      ↓
-LLM
-      ↓
-Answer
+Request Article
+      │
+      ▼
+Check SQLite
+   ┌──┴──┐
+   │     │
+Found  Not Found
+   │     │
+   ▼     ▼
+Cache  Wikipedia
+          │
+          ▼
+       Process
+          │
+          ▼
+        SQLite
 ```
 
----
-
-### `app/config.py`
-
-Contains application configuration such as:
-
-* Model names
-* Vector database paths
-* Data paths
-* Retrieval parameters
-* Chunk size
-* Chunk overlap
-* Number of documents to retrieve
-
-Keeping configuration separate makes it easier to change models and parameters later.
+This prevents repeated downloading and processing of the same article.
 
 ---
 
@@ -291,56 +382,98 @@ Keeping configuration separate makes it easier to change models and parameters l
 
 ### 1. Fetch
 
-```bash
-wiki-rag fetch "Artificial Intelligence"
-```
+When an article is requested:
 
 ```text
 Wikipedia
     ↓
 wikipedia.py
     ↓
-data/raw/
+Article
 ```
 
-### 2. Index
+The article is then processed into structured chunks.
 
-```bash
-wiki-rag index
-```
+---
+
+### 2. Cache
+
+Before fetching an article, wikiBOT checks SQLite.
 
 ```text
-Raw Documents
-    ↓
-processor.py
-    ↓
+Requested Article
+       ↓
+   SQLite Check
+      /     \
+    Yes      No
+     ↓        ↓
+  Load DB   Wikipedia
+              ↓
+           Process
+              ↓
+           Save DB
+```
+
+This makes SQLite the local persistent knowledge cache.
+
+---
+
+### 3. Process
+
+```text
+Wikipedia Article
+       ↓
+Clean Text
+       ↓
+Sections
+       ↓
+Chunks + Metadata
+```
+
+Example chunk:
+
+```python
+{
+    "section": "History",
+    "chunk_index": 2,
+    "content": "Article: Python\nSection: History\n..."
+}
+```
+
+---
+
+### 4. Index
+
+The chunk content is converted into embeddings:
+
+```text
 Chunks
-    ↓
+   ↓
 embedder.py
-    ↓
+   ↓
 Embeddings
-    ↓
+   ↓
 faiss_store.py
-    ↓
-FAISS Index
+   ↓
+FAISS
 ```
 
-### 3. Ask
+The chunk metadata is retained so that the retrieved result still contains information about its source.
 
-```bash
-wiki-rag ask "What is artificial intelligence?"
-```
+---
+
+### 5. Ask
 
 ```text
 Question
     ↓
-Embedding
+Query Embedding
     ↓
 FAISS
     ↓
 Relevant Chunks
     ↓
-Prompt
+Build Prompt
     ↓
 LLM
     ↓
@@ -349,18 +482,59 @@ Answer
 
 ---
 
+## SQLite Cache
+
+The SQLite cache is designed to avoid unnecessary calls to Wikipedia.
+
+For example, the first time the user loads:
+
+```text
+Python
+```
+
+wikiBOT performs:
+
+```text
+Python
+  ↓
+Wikipedia
+  ↓
+Process
+  ↓
+SQLite
+```
+
+The next time the same article is requested:
+
+```text
+Python
+  ↓
+SQLite
+  ↓
+Cached Chunks
+```
+
+No new Wikipedia download is required.
+
+The stored article also contains its Wikipedia links. These links will later be used to expand the local knowledge base by checking which linked articles are already cached and which ones still need to be fetched.
+
+---
+
 ## Initial Technology Stack
 
-| Component     | Technology                |
-| ------------- | ------------------------- |
-| Language      | Python                    |
-| CLI           | Click                     |
-| Data Source   | Wikipedia                 |
-| Embeddings    | Sentence Transformers     |
-| Vector Store  | FAISS                     |
-| LLM           | Hugging Face Transformers |
-| Deep Learning | PyTorch                   |
-| HTTP          | Requests                  |
+| Component             | Technology                |
+| --------------------- | ------------------------- |
+| Language              | Python                    |
+| CLI                   | Click                     |
+| Data Source           | Wikipedia                 |
+| Local Knowledge Store | SQLite                    |
+| Embeddings            | Sentence Transformers     |
+| Vector Store          | FAISS                     |
+| LLM                   | Hugging Face Transformers |
+| Deep Learning         | PyTorch                   |
+| HTTP                  | Requests                  |
+
+SQLite is built into Python and therefore does not require an additional dependency.
 
 LangChain is **not required for the initial implementation**.
 
@@ -392,35 +566,110 @@ pip install -r requirements.txt
 
 ## Example Usage
 
-Fetch a Wikipedia article:
+Run the application:
 
 ```bash
-wiki-rag fetch "Python (programming language)"
+python -m src.cli
 ```
 
-Create the vector index:
+The CLI asks for a Wikipedia page:
 
-```bash
-wiki-rag index
+```text
+Enter Wikipedia Page Title: Python
 ```
 
-Ask a question:
+After loading the article, questions can be asked:
 
-```bash
-wiki-rag ask "Who created Python?"
+```text
+Your question: Who created Python?
+```
+
+To load a different topic:
+
+```text
+Your question: new
+```
+
+To exit:
+
+```text
+Your question: exit
 ```
 
 The application retrieves relevant information from the indexed Wikipedia content and provides it as context to the LLM.
 
 ---
 
+## Current Development Status
+
+Implemented:
+
+* Wikipedia article fetching
+* Wikipedia section extraction
+* Wikipedia link extraction
+* Text cleaning
+* Section-aware chunking
+* Chunk metadata
+* Sentence Transformer embeddings
+* FAISS semantic search
+* Cosine-similarity retrieval
+* Hugging Face LLM integration
+* RAG pipeline
+* SQLite database
+* Local article caching
+* Persistent article chunks
+* Persistent Wikipedia links
+* Knowledge Manager
+
+Current architecture:
+
+```text
+                    ┌───────────────┐
+                    │   Wikipedia   │
+                    └───────┬───────┘
+                            │
+                            ▼
+                    ┌───────────────┐
+                    │ Data Processor│
+                    └───────┬───────┘
+                            │
+                            ▼
+                    ┌───────────────┐
+                    │    SQLite     │
+                    │   Knowledge   │
+                    │     Store     │
+                    └───────┬───────┘
+                            │
+                            ▼
+                    ┌───────────────┐
+                    │   Embeddings  │
+                    └───────┬───────┘
+                            │
+                            ▼
+                    ┌───────────────┐
+                    │     FAISS     │
+                    └───────┬───────┘
+                            │
+                            ▼
+                    ┌───────────────┐
+                    │      LLM      │
+                    └───────┬───────┘
+                            │
+                            ▼
+                         Answer
+```
+
+---
+
 ## Future Improvements
 
-The initial version will focus only on the basic RAG pipeline.
+The initial version focuses on understanding the basic RAG pipeline.
 
 Possible future improvements include:
 
-* LangChain integration
+* Linked-article cache expansion
+* Better linked-page selection
+* Persistent FAISS index
 * Better document chunking
 * Metadata filtering
 * Hybrid search
@@ -434,6 +683,7 @@ Possible future improvements include:
 * Evaluation of retrieval quality
 * RAG evaluation metrics
 * Support for larger local LLMs
+* LangChain integration
 
 The UI can be added later without significantly changing the core RAG pipeline:
 
@@ -447,8 +697,8 @@ The UI can be added later without significantly changing the core RAG pipeline:
              └──────▲───────┘
                     │
              ┌──────┴───────┐
-             │     UI       │
+             │      UI      │
              └──────────────┘
 ```
 
-The core idea is to keep **data ingestion, retrieval, generation, and user interfaces separate**, allowing each part to evolve independently.
+The core idea is to keep **data ingestion, knowledge storage, retrieval, generation, and user interfaces separate**, allowing each part to evolve independently.

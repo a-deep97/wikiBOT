@@ -97,21 +97,6 @@ def extract_section(
 
 
 def fetch_wikipedia_article(title: str) -> dict:
-    """
-    Fetch a Wikipedia article and return structured content.
-
-    Returns:
-
-        {
-            "title": "...",
-            "sections": [
-                {
-                    "title": "...",
-                    "text": "..."
-                }
-            ]
-        }
-    """
     wiki = create_wikipedia_client()
 
     page = wiki.page(title)
@@ -123,29 +108,37 @@ def fetch_wikipedia_article(title: str) -> dict:
 
     sections = []
 
-    # The article lead/introduction.
     lead_text = clean_text(page.summary)
 
     if lead_text:
-        sections.append(
-            {
-                "title": "Introduction",
-                "text": lead_text,
-            }
-        )
+        sections.append({
+            "title": "Introduction",
+            "text": lead_text
+        })
 
-    # Main article sections.
     for section in page.sections:
         sections.extend(
             extract_section(section)
         )
 
-    if not sections:
-        raise ValueError(
-            f"Wikipedia page '{title}' contains no useful content."
-        )
-
     return {
         "title": page.title,
         "sections": sections,
+        "links": get_page_links(page)
     }
+
+def get_page_links(page) -> list[str]:
+    """
+    Get titles of pages directly linked from a Wikipedia page.
+    """
+
+    links = []
+
+    for link in page.links.values():
+
+        title = link.title.strip()
+
+        if title:
+            links.append(title)
+
+    return links
