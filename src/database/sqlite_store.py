@@ -19,7 +19,8 @@ class SQLiteStore:
         )
 
         self.connection = sqlite3.connect(
-            self.db_path
+            self.db_path,
+            check_same_thread=False
         )
 
         # Enable foreign-key enforcement.

@@ -59,3 +59,7 @@ Added BM25 keyword-based retrieval alongside FAISS semantic search to improve re
 ### 15. Streamlit Development and Testing Interface
 
 Added a Streamlit-based graphical interface for wikiBOT to make the RAG system easier to test and develop compared with the CLI-only workflow. The interface provides Wikipedia article selection, LLM model selection, knowledge loading, conversational question-and-answer interaction, and chat history while keeping the underlying RAG components independent from the UI. Added Streamlit resource caching for shared models and backend resources so expensive embedding and LLM initialization can be reused across interactions and articles. The Streamlit interface is intended primarily as a development and testing layer for validating retrieval, model behavior, and RAG functionality before building a more complete standalone application interface.
+
+### 16. Shared Backend Architecture
+
+Refactored wikiBOT to introduce a shared WikiBotBackend responsible for managing the core RAG components and their lifecycle. The backend now owns SQLite knowledge storage, Wikipedia knowledge management, embedding and LLM resources, FAISS and BM25 retrieval stores, and RAG pipeline construction, while the CLI and Streamlit layers focus on user interaction. This also enables expensive resources such as the embedding model and LLM to remain loaded and be reused across multiple article loads instead of being recreated by the interface layer.

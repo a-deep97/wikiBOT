@@ -1,26 +1,13 @@
 import click
 
-from src.models.data import AVAILABLE_MODELS, DEFAULT_MODEL, DEFAULT_MODEL
-from src.vector.bm25_store import BM25Store
+from .backend.manager import WikiBotBackend
+from .models.data import AVAILABLE_MODELS, DEFAULT_MODEL
 
-from .data.wikipedia import fetch_wikipedia_article
-from .data.processor import chunk_text
-from .embeddings.embedder import Embedder
-from .vector.faiss_store import FAISSStore
-from .models.model import Model
-from .pipeline import RAGPipeline
-from .database.sqlite_store import SQLiteStore
-from .knowledge.manager import KnowledgeManager
 
-database = SQLiteStore()
+def choose_model() -> str:
+    """Display available models and return the selected model key."""
 
-knowledge_manager = KnowledgeManager(
-    database
-)
-
-def select_model() -> str:
-    print("\nAvailable models:")
-    print("-----------------")
+    click.echo("\nAvailable models:")
 
     model_keys = list(AVAILABLE_MODELS.keys())
 
@@ -33,142 +20,178 @@ def select_model() -> str:
             else ""
         )
 
-        print(
+        click.echo(
             f"{index}. {key} - "
             f"{model['name']}"
             f"{default_marker}"
         )
 
-    print()
+    choice = click.prompt(
+        "\nSelect model",
+        default="1"
+    )
 
-    while True:
-        selection = input(
-            f"Select model [{DEFAULT_MODEL}]: "
-        ).strip()
-
-        # Enter → default model
-        if not selection:
-            return DEFAULT_MODEL
-
-        if selection in AVAILABLE_MODELS:
-            return selection
-
-        print(
-            f"Invalid selection '{selection}'. "
-            f"Choose one of: "
-            f"{', '.join(model_keys)}"
+    try:
+        index = int(choice) - 1
+    except ValueError:
+        click.echo(
+            "Invalid selection. Using default model."
         )
-        
-@click.command()
-def askwiki():
-    click.secho("wikiBot (CLI)", fg="cyan", bold=True)
+        return DEFAULT_MODEL
 
-    embedder = Embedder()
-    model_key = select_model()
-    llm = Model(model_key)
+    if index < 0 or index >= len(model_keys):
+        click.echo(
+            "Invalid selection. Using default model."
+        )
+        return DEFAULT_MODEL
 
-    rag_pipeline = None
-    title = None
+    return model_keys[index]
+
+
+def ask_questions(
+    backend: WikiBotBackend,
+    article_title: str
+):
+    """Run the question-answer loop for an article."""
+
+    click.echo(
+        f"\nLoaded article: {article_title}"
+    )
+
+    click.echo(
+        "\nAsk questions about the article."
+    )
+
+    click.echo(
+        "Type 'new' to load another article."
+    )
+
+    click.echo(
+        "Type 'exit' to quit."
+    )
 
     while True:
 
-        if rag_pipeline is None:
-            title = click.prompt("Enter Wikipedia Page Title")
+        question = click.prompt(
+            "\nQuestion",
+            prompt_suffix=": "
+        )
 
-            try:
-                chunks = knowledge_manager.get_article(
-                    title
-                )
+        command = question.strip().lower()
 
-                if not chunks:
-                    raise ValueError(
-                        "Wikipedia article did not produce any chunks."
-                    )
+        if command == "exit":
+            return "exit"
 
-                chunk_texts = [
-                    chunk["content"]
-                    for chunk in chunks
-                ]
+        if command == "new":
+            return "new"
 
-                embeddings = embedder.embed_documents(
-                    chunk_texts
-                )
+        try:
+            answer = backend.ask(question)
 
-                dimension = embeddings.shape[1]
+            click.echo(
+                f"\nAnswer: {answer}"
+            )
 
-                vector_store = FAISSStore(
-                    dimension=dimension
-                )
+        except Exception as error:
 
-                vector_store.add(
-                    embeddings,
-                    chunks
-                )
+            click.echo(
+                f"\nError generating answer: {error}"
+            )
 
-                bm25_store = BM25Store()
-                bm25_store.build(chunks)
 
-                rag_pipeline = RAGPipeline(
-                    embedder=embedder,
-                    vector_store=vector_store,
-                    bm25_store=bm25_store,
-                    llm=llm,
-                    top_k=3,
-                    candidate_k=10,
-                    similarity_threshold=0.35
-                )
+@click.command()
+def main():
+    """Start wikiBOT."""
 
-                click.secho(
-                    f"Loaded article for '{title}'",
-                    fg="green"
-                )
+    click.echo(
+        "\n================================"
+    )
 
-                click.secho(
-                    f"Created {len(chunks)} chunks",
-                    fg="green"
-                )
+    click.echo(
+        "          wikiBOT"
+    )
 
-            except Exception as e:
-                click.secho(
-                    f"Error: {str(e)}",
-                    fg="red"
+    click.echo(
+        "================================"
+    )
+
+    # --------------------------------------------------
+    # Model selection
+    # --------------------------------------------------
+
+    model_key = choose_model()
+
+    click.echo(
+        f"\nSelected model: {model_key}"
+    )
+
+    # --------------------------------------------------
+    # Create backend
+    # --------------------------------------------------
+
+    backend = WikiBotBackend(
+        model_key=model_key,
+        top_k=3,
+        candidate_k=10,
+        similarity_threshold=0.35
+    )
+
+    try:
+
+        # Load shared resources once.
+        backend.load_resources()
+
+        # --------------------------------------------------
+        # Article loop
+        # --------------------------------------------------
+
+        while True:
+
+            article_title = click.prompt(
+                "\nWikipedia article"
+            )
+
+            article_title = article_title.strip()
+
+            if not article_title:
+                click.echo(
+                    "Please enter an article title."
                 )
                 continue
 
-        click.secho(
-            "\nAsk a question "
-            "(type 'new' for new topic, or 'exit' to quit):",
-            fg="yellow"
+            try:
+
+                backend.load_knowledge(
+                    article_title
+                )
+
+            except Exception as error:
+
+                click.echo(
+                    f"\nError loading article: {error}"
+                )
+
+                continue
+
+            result = ask_questions(
+                backend,
+                article_title
+            )
+
+            if result == "exit":
+                break
+
+            if result == "new":
+                continue
+
+    finally:
+
+        backend.close()
+
+        click.echo(
+            "\nGoodbye!"
         )
-
-        question = click.prompt("Your question")
-
-        if question.lower() in ["exit", "quit"]:
-            click.secho(
-                "Goodbye!",
-                fg="cyan"
-            )
-            break
-
-        if question.lower() == "new":
-            rag_pipeline = None
-            title = None
-            continue
-
-        try:
-            answer = rag_pipeline.ask(question)
-
-            click.secho(
-                f"Answer: {answer}\n",
-                fg="green"
-            )
-
-        except Exception as e:
-            click.secho(
-                f"Error: {str(e)}",
-                fg="red"
-            )
 
 
 if __name__ == "__main__":
-    askwiki()
+    main()
