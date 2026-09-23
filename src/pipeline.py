@@ -29,34 +29,33 @@ class RAGPipeline:
         embedder: Embedder,
         vector_store: FAISSStore,
         llm: Model,
-        top_k: int = 3
+        top_k: int = 3,
+        similarity_threshold: float = 0.35
     ):
         self.embedder = embedder
         self.vector_store = vector_store
         self.llm = llm
         self.top_k = top_k
+        self.similarity_threshold = similarity_threshold
 
-    def retrieve(self, question: str) -> list[str]:
-        """
-        Retrieve relevant document chunks for a question.
-
-        Args:
-            question: User's question.
-
-        Returns:
-            Relevant document chunks.
-        """
+    def retrieve(self, question: str) -> list[dict]:
 
         question_embedding = self.embedder.embed_text(
             question
         )
 
-        documents = self.vector_store.search(
+        results = self.vector_store.search(
             question_embedding,
             top_k=self.top_k
         )
 
-        return documents
+        filtered_results = [
+            document
+            for document, score in results
+            if score >= self.similarity_threshold
+        ]
+
+        return filtered_results
 
     def build_prompt(
         self,
