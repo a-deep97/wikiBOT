@@ -5,6 +5,7 @@ beautifulsoup4
 
 numpy
 faiss-cpu
+rank-bm25
 
 sentence-transformers
 transformers

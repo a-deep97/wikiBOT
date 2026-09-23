@@ -1,6 +1,7 @@
 import click
 
 from src.models.data import AVAILABLE_MODELS, DEFAULT_MODEL, DEFAULT_MODEL
+from src.vector.bm25_store import BM25Store
 
 from .data.wikipedia import fetch_wikipedia_article
 from .data.processor import chunk_text
@@ -104,11 +105,17 @@ def askwiki():
                     chunks
                 )
 
+                bm25_store = BM25Store()
+                bm25_store.build(chunks)
+
                 rag_pipeline = RAGPipeline(
                     embedder=embedder,
                     vector_store=vector_store,
+                    bm25_store=bm25_store,
                     llm=llm,
-                    top_k=3
+                    top_k=3,
+                    candidate_k=10,
+                    similarity_threshold=0.35
                 )
 
                 click.secho(

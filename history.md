@@ -44,6 +44,14 @@ Separated model configuration from model implementation and introduced selectabl
 
 Added automatic hardware detection for PyTorch CUDA support, GPU inference when CUDA is available, and CPU fallback with warnings when it is not. Verified local GPU inference using an NVIDIA RTX 3050 and added device and GPU information during model initialization.
 
-### 12. Streamlit Interface
+### 12. Sentence-aware Chunking
 
-Added Streamlit as the first graphical interface for wikiBOT while keeping the existing RAG components independent of the UI. Implemented Wikipedia article selection, model selection, knowledge loading, conversational chat, and chat history, with Streamlit resource caching used to prevent expensive models and backend resources from being recreated unnecessarily.
+Updated the text chunking process to preserve sentence boundaries and maintain sentence-level overlap, preventing chunks from cutting through sentences and improving the quality of retrieved context.
+
+### 13. FAISS Similarity Scoring and Threshold
+
+Updated FAISS retrieval to return cosine similarity scores and added a configurable similarity threshold to filter out low-relevance results before they are passed to the RAG pipeline.
+
+### 14. BM25 Hybrid Retrieval
+
+Added BM25 keyword-based retrieval alongside FAISS semantic search to improve retrieval for exact terms, names, numbers, versions, and technical keywords. The pipeline now combines candidates from both retrieval methods before passing the final context to the LLM.
