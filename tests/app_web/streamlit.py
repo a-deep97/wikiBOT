@@ -55,7 +55,7 @@ st.sidebar.title("wikiBOT")
 
 article_title = st.sidebar.text_input(
     "Wikipedia Article",
-    value="Python"
+    value="Google"
 )
 
 
