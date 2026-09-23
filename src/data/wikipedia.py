@@ -3,7 +3,7 @@ import re
 import wikipediaapi
 
 
-WIKI_USER_AGENT = "WikipediaRAG/1.0"
+WIKI_USER_AGENT = "AskWikiBot/1.0"
 
 
 UNWANTED_SECTIONS = {
@@ -16,6 +16,10 @@ UNWANTED_SECTIONS = {
     "sources",
     "citations",
 }
+
+
+class WikipediaArticleError(Exception):
+    """Raised when a Wikipedia article cannot be loaded."""
 
 
 def create_wikipedia_client() -> wikipediaapi.Wikipedia:
@@ -97,48 +101,74 @@ def extract_section(
 
 
 def fetch_wikipedia_article(title: str) -> dict:
+    """
+    Fetch and validate a Wikipedia article.
+
+    Raises:
+        WikipediaArticleError:
+            If the title is empty, the article does not exist,
+            or the title refers to a disambiguation page.
+    """
+
+    title = title.strip()
+
+    # --------------------------------------------------
+    # Validate input
+    # --------------------------------------------------
+
+    if not title:
+        raise WikipediaArticleError(
+            "Wikipedia article title cannot be empty."
+        )
+
+    # --------------------------------------------------
+    # Create Wikipedia client
+    # --------------------------------------------------
+
     wiki = create_wikipedia_client()
+
+    # --------------------------------------------------
+    # Fetch article
+    # --------------------------------------------------
 
     page = wiki.page(title)
 
+    # --------------------------------------------------
+    # Article does not exist
+    # --------------------------------------------------
+
     if not page.exists():
-        raise ValueError(
-            f"Wikipedia page '{title}' not found."
+        raise WikipediaArticleError(
+            f"Wikipedia article '{title}' does not exist."
         )
 
+    # --------------------------------------------------
+    # Extract useful sections
+    # --------------------------------------------------
+
     sections = []
-
-    lead_text = clean_text(page.summary)
-
-    if lead_text:
-        sections.append({
-            "title": "Introduction",
-            "text": lead_text
-        })
 
     for section in page.sections:
         sections.extend(
             extract_section(section)
         )
 
+    # --------------------------------------------------
+    # Extract links
+    # --------------------------------------------------
+
+    links = [
+        link.title
+        for link in page.links.values()
+    ]
+
+    # --------------------------------------------------
+    # Return article
+    # --------------------------------------------------
+
     return {
         "title": page.title,
+        "summary": page.summary,
         "sections": sections,
-        "links": get_page_links(page)
+        "links": links,
     }
-
-def get_page_links(page) -> list[str]:
-    """
-    Get titles of pages directly linked from a Wikipedia page.
-    """
-
-    links = []
-
-    for link in page.links.values():
-
-        title = link.title.strip()
-
-        if title:
-            links.append(title)
-
-    return links

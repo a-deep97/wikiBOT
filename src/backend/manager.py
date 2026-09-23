@@ -1,5 +1,7 @@
 import time
 
+from src.data.wikipedia import WikipediaArticleError
+
 from ..database.sqlite_store import SQLiteStore
 from ..knowledge.manager import KnowledgeManager
 from ..embeddings.embedder import Embedder
@@ -104,9 +106,16 @@ class WikiBotBackend:
 
         start = time.perf_counter()
 
-        chunks = self.knowledge_manager.get_article(
-            article_title
-        )
+        try:
+            chunks = self.knowledge_manager.get_article(
+                article_title
+            )
+
+        except WikipediaArticleError as error:
+
+            raise ValueError(
+                str(error)
+            ) from error
 
         if not chunks:
             raise ValueError(
