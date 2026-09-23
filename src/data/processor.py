@@ -2,12 +2,45 @@ import re
 
 
 def clean_text(text: str) -> str:
-    """
-    Clean Wikipedia text.
-    """
     text = re.sub(r"\s+", " ", text)
-
     return text.strip()
+
+
+def split_sentences(text: str) -> list[str]:
+    """
+    Split text into sentences while keeping the punctuation.
+    """
+    return [
+        sentence.strip()
+        for sentence in re.split(
+            r"(?<=[.!?])\s+",
+            text
+        )
+        if sentence.strip()
+    ]
+
+
+def _get_overlap_sentences(
+    sentences: list[str],
+    overlap_size: int
+) -> list[str]:
+    """
+    Return trailing sentences whose combined length
+    is approximately within overlap_size.
+    """
+    overlap = []
+    total_length = 0
+
+    for sentence in reversed(sentences):
+        sentence_length = len(sentence)
+
+        if overlap and total_length + sentence_length + 1 > overlap_size:
+            break
+
+        overlap.insert(0, sentence)
+        total_length += sentence_length + 1
+
+    return overlap
 
 
 def chunk_section(
@@ -16,14 +49,6 @@ def chunk_section(
     chunk_size: int = 800,
     chunk_overlap: int = 100
 ) -> list[dict]:
-    """
-    Split one section into chunks.
-
-    Returns structured chunks containing:
-        - section
-        - chunk_index
-        - content
-    """
 
     if chunk_size <= 0:
         raise ValueError(
@@ -45,32 +70,97 @@ def chunk_section(
     if not section_text:
         return []
 
-    chunks = []
+    sentences = split_sentences(section_text)
 
-    start = 0
+    chunks = []
+    current_sentences = []
+    current_length = 0
     chunk_index = 0
 
-    step = chunk_size - chunk_overlap
+    for sentence in sentences:
 
-    while start < len(section_text):
+        sentence_length = len(sentence)
 
-        end = start + chunk_size
+        # Handle a single sentence larger than chunk_size.
+        if sentence_length > chunk_size:
+            if current_sentences:
+                chunks.append({
+                    "section": section_title,
+                    "chunk_index": chunk_index,
+                    "content": (
+                        f"Section: {section_title}\n"
+                        f"{' '.join(current_sentences)}"
+                    )
+                })
 
-        text = section_text[start:end].strip()
+                chunk_index += 1
+                current_sentences = []
+                current_length = 0
 
-        if text:
             chunks.append({
                 "section": section_title,
                 "chunk_index": chunk_index,
                 "content": (
                     f"Section: {section_title}\n"
-                    f"{text}"
+                    f"{sentence}"
+                )
+            })
+
+            chunk_index += 1
+            continue
+
+        new_length = (
+            current_length +
+            sentence_length +
+            (1 if current_sentences else 0)
+        )
+
+        if current_sentences and new_length > chunk_size:
+
+            chunks.append({
+                "section": section_title,
+                "chunk_index": chunk_index,
+                "content": (
+                    f"Section: {section_title}\n"
+                    f"{' '.join(current_sentences)}"
                 )
             })
 
             chunk_index += 1
 
-        start += step
+            overlap_sentences = _get_overlap_sentences(
+                current_sentences,
+                chunk_overlap
+            )
+
+            current_sentences = overlap_sentences
+            current_length = sum(
+                len(sentence)
+                for sentence in current_sentences
+            )
+
+            if current_sentences:
+                current_length += len(current_sentences) - 1
+
+        current_sentences.append(sentence)
+
+        current_length = sum(
+            len(item)
+            for item in current_sentences
+        )
+
+        if current_sentences:
+            current_length += len(current_sentences) - 1
+
+    if current_sentences:
+        chunks.append({
+            "section": section_title,
+            "chunk_index": chunk_index,
+            "content": (
+                f"Section: {section_title}\n"
+                f"{' '.join(current_sentences)}"
+            )
+        })
 
     return chunks
 
@@ -86,7 +176,6 @@ def chunk_text(
     for article in articles:
 
         article_title = article.get("title", "")
-
         sections = article.get("sections", [])
 
         for section in sections:
