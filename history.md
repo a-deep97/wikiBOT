@@ -55,3 +55,7 @@ Updated FAISS retrieval to return cosine similarity scores and added a configura
 ### 14. BM25 Hybrid Retrieval
 
 Added BM25 keyword-based retrieval alongside FAISS semantic search to improve retrieval for exact terms, names, numbers, versions, and technical keywords. The pipeline now combines candidates from both retrieval methods before passing the final context to the LLM.
+
+### 15. Streamlit Development and Testing Interface
+
+Added a Streamlit-based graphical interface for wikiBOT to make the RAG system easier to test and develop compared with the CLI-only workflow. The interface provides Wikipedia article selection, LLM model selection, knowledge loading, conversational question-and-answer interaction, and chat history while keeping the underlying RAG components independent from the UI. Added Streamlit resource caching for shared models and backend resources so expensive embedding and LLM initialization can be reused across interactions and articles. The Streamlit interface is intended primarily as a development and testing layer for validating retrieval, model behavior, and RAG functionality before building a more complete standalone application interface.
