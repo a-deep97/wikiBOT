@@ -10,7 +10,7 @@ import streamlit as st
 
 from src.backend.manager import WikiBotBackend
 from src.models.data import AVAILABLE_MODELS, DEFAULT_MODEL
-
+from streamlit_searchbox import st_searchbox
 
 # --------------------------------------------------
 # Page configuration
@@ -47,18 +47,8 @@ def get_backend(model_key: str):
 
 
 # --------------------------------------------------
-# Sidebar
+# Initialize backend
 # --------------------------------------------------
-
-st.sidebar.title("wikiBOT")
-
-
-article_title = st.sidebar.text_input(
-    "Wikipedia Article",
-    value="Google"
-)
-
-
 model_keys = list(AVAILABLE_MODELS.keys())
 
 
@@ -70,13 +60,41 @@ model_key = st.sidebar.selectbox(
         f"{key} - {AVAILABLE_MODELS[key]['name']}"
     )
 )
-
-
-# --------------------------------------------------
-# Initialize backend
-# --------------------------------------------------
-
 backend = get_backend(model_key)
+
+
+# --------------------------------------------------
+# Sidebar
+# --------------------------------------------------
+
+st.sidebar.title("wikiBOT")
+
+def search_articles(query: str) -> list[str]:
+    """Get article suggestions from the backend."""
+
+    if len(query.strip()) < 2:
+        return []
+
+    try:
+        return backend.suggest_articles(
+            query=query,
+            limit=8
+        )
+
+    except Exception as error:
+        print(f"[SEARCH] Suggestion error: {error}")
+        return []
+
+with st.sidebar:
+    article_title = st_searchbox(
+        search_function=search_articles,
+        placeholder="Search Wikipedia articles...",
+        label="Wikipedia Article",
+        key="wiki_article_search",
+        debounce=300,
+        edit_after_submit="option",
+        default_searchterm="Python"
+    )
 
 
 # --------------------------------------------------

@@ -1,6 +1,6 @@
 import time
 
-from src.data.wikipedia import WikipediaArticleError
+from src.data.wikipedia import WikipediaArticleError, search_wikipedia_articles
 
 from ..database.sqlite_store import SQLiteStore
 from ..knowledge.manager import KnowledgeManager
@@ -48,6 +48,10 @@ class WikiBotBackend:
 
         # Final RAG pipeline
         self.pipeline = None
+
+        # Article autocomplete cache
+        self._suggestion_cache = {}
+        self._suggestion_cache_ttl = 300
 
     # --------------------------------------------------
     # Shared resources
@@ -228,3 +232,48 @@ class WikiBotBackend:
         """Close backend resources."""
 
         self.database.close()
+
+    def suggest_articles(
+        self,
+        query: str,
+        limit: int = 8
+    ) -> list[str]:
+        """
+        Return Wikipedia article suggestions for a query.
+
+        Results are cached for a short period to avoid
+        repeatedly querying Wikipedia.
+        """
+
+        query = query.strip()
+
+        if len(query) < 2:
+            return []
+
+        cache_key = (query.lower(), limit)
+        current_time = time.monotonic()
+
+        cached_result = self._suggestion_cache.get(
+            cache_key
+        )
+
+        if cached_result:
+            cached_time, suggestions = cached_result
+
+            if (
+                current_time - cached_time
+                < self._suggestion_cache_ttl
+            ):
+                return suggestions
+
+        suggestions = search_wikipedia_articles(
+            query=query,
+            limit=limit
+        )
+
+        self._suggestion_cache[cache_key] = (
+            current_time,
+            suggestions
+        )
+
+        return suggestions

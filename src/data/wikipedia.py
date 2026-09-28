@@ -1,5 +1,6 @@
 import re
 
+import requests
 import wikipediaapi
 
 
@@ -172,3 +173,63 @@ def fetch_wikipedia_article(title: str) -> dict:
         "sections": sections,
         "links": links,
     }
+
+def search_wikipedia_articles(
+    query: str,
+    limit: int = 8
+) -> list[str]:
+    """
+    Search Wikipedia for article title suggestions.
+
+    Returns a list of matching article titles.
+    """
+
+    query = query.strip()
+
+    if len(query) < 2:
+        return []
+
+    if limit < 1:
+        return []
+
+    url = "https://en.wikipedia.org/w/api.php"
+
+    params = {
+        "action": "query",
+        "list": "search",
+        "srsearch": query,
+        "srlimit": limit,
+        "format": "json",
+    }
+
+    try:
+        response = requests.get(
+            url,
+            params=params,
+            headers={
+                "User-Agent": WIKI_USER_AGENT
+            },
+            timeout=5
+        )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+    except requests.RequestException as error:
+        raise RuntimeError(
+            f"Could not search Wikipedia: {error}"
+        ) from error
+
+    except ValueError as error:
+        raise RuntimeError(
+            "Wikipedia returned an invalid response."
+        ) from error
+
+    results = data.get("query", {}).get("search", [])
+
+    return [
+        result["title"]
+        for result in results
+        if result.get("title")
+    ]

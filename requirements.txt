@@ -13,3 +13,6 @@ torch
 huggingface-hub
 
 python-dotenv
+
+streamlit
+streamlit-searchbox
