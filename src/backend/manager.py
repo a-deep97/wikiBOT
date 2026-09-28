@@ -1,6 +1,9 @@
 import time
 
-from src.data.wikipedia import WikipediaArticleError, search_wikipedia_articles
+from src.data.wikipedia import (
+    WikipediaArticleError,
+    search_wikipedia_articles,
+)
 
 from ..database.sqlite_store import SQLiteStore
 from ..knowledge.manager import KnowledgeManager
@@ -34,9 +37,13 @@ class WikiBotBackend:
 
         # Persistent knowledge store
         self.database = SQLiteStore()
+
         self.knowledge_manager = KnowledgeManager(
             self.database
         )
+
+        # Currently loaded article
+        self.current_article_title = None
 
         # Shared ML resources
         self.embedder = None
@@ -126,6 +133,9 @@ class WikiBotBackend:
                 f"No chunks found for '{article_title}'."
             )
 
+        # Store the successfully loaded article
+        self.current_article_title = article_title.strip()
+
         print(
             f"[TIMING] SQLite/Wikipedia: "
             f"{time.perf_counter() - start:.2f}s"
@@ -210,6 +220,31 @@ class WikiBotBackend:
         return chunks
 
     # --------------------------------------------------
+    # Article sections
+    # --------------------------------------------------
+
+    def get_article_sections(
+        self,
+        article_title: str | None = None,
+    ) -> list[dict[str, str]]:
+        """
+        Return cached sections for an article.
+
+        If no article title is supplied, return sections
+        for the currently loaded article.
+        """
+
+        if article_title is None:
+            article_title = self.current_article_title
+
+        if not article_title:
+            return []
+
+        return self.database.get_article_sections(
+            article_title
+        )
+
+    # --------------------------------------------------
     # Question answering
     # --------------------------------------------------
 
@@ -225,13 +260,8 @@ class WikiBotBackend:
         return self.pipeline.ask(question)
 
     # --------------------------------------------------
-    # Resource cleanup
+    # Article autocomplete
     # --------------------------------------------------
-
-    def close(self):
-        """Close backend resources."""
-
-        self.database.close()
 
     def suggest_articles(
         self,
@@ -277,3 +307,12 @@ class WikiBotBackend:
         )
 
         return suggestions
+
+    # --------------------------------------------------
+    # Resource cleanup
+    # --------------------------------------------------
+
+    def close(self):
+        """Close backend resources."""
+
+        self.database.close()

@@ -16,3 +16,4 @@ python-dotenv
 
 streamlit
 streamlit-searchbox
+streamlit-adjustable-columns

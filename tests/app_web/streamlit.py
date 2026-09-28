@@ -8,9 +8,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import streamlit as st
 
+from streamlit_searchbox import st_searchbox
+
 from src.backend.manager import WikiBotBackend
 from src.models.data import AVAILABLE_MODELS, DEFAULT_MODEL
-from streamlit_searchbox import st_searchbox
+from tests.app_web.helpers import render_article_sections
+
 
 # --------------------------------------------------
 # Page configuration
@@ -20,6 +23,50 @@ st.set_page_config(
     page_title="wikiBOT",
     page_icon="🤖",
     layout="wide"
+)
+
+
+# --------------------------------------------------
+# Sidebar sizing
+# --------------------------------------------------
+#
+# Streamlit's sidebar is natively resizable.
+#
+# Default width:
+#   ~43% of the main usable application width
+#
+# This gives approximately:
+#
+#   Article : Chatbot
+#      3   :    4
+#
+# The sidebar itself remains draggable.
+# --------------------------------------------------
+
+st.markdown(
+    """
+    <style>
+
+    /* Default article/sidebar width */
+    [data-testid="stSidebar"] {
+        min-width: 360px !important;
+        width: 51% !important;
+        max-width: 800px !important;
+    }
+
+    /* Keep the sidebar contents inside the available width */
+    [data-testid="stSidebarContent"] {
+        min-width: 0 !important;
+    }
+
+    /* Prevent the main chatbot area from becoming too narrow */
+    [data-testid="stMain"] {
+        min-width: 600px !important;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 
@@ -40,7 +87,6 @@ def get_backend(model_key: str):
         similarity_threshold=0.35
     )
 
-    # Load shared resources when the app starts.
     backend.load_resources()
 
     return backend
@@ -49,8 +95,8 @@ def get_backend(model_key: str):
 # --------------------------------------------------
 # Initialize backend
 # --------------------------------------------------
-model_keys = list(AVAILABLE_MODELS.keys())
 
+model_keys = list(AVAILABLE_MODELS.keys())
 
 model_key = st.sidebar.selectbox(
     "Model",
@@ -60,6 +106,7 @@ model_key = st.sidebar.selectbox(
         f"{key} - {AVAILABLE_MODELS[key]['name']}"
     )
 )
+
 backend = get_backend(model_key)
 
 
@@ -67,26 +114,38 @@ backend = get_backend(model_key)
 # Sidebar
 # --------------------------------------------------
 
-st.sidebar.title("wikiBOT")
-
-def search_articles(query: str) -> list[str]:
-    """Get article suggestions from the backend."""
-
-    if len(query.strip()) < 2:
-        return []
-
-    try:
-        return backend.suggest_articles(
-            query=query,
-            limit=8
-        )
-
-    except Exception as error:
-        print(f"[SEARCH] Suggestion error: {error}")
-        return []
-
-
 with st.sidebar:
+
+    st.title("wikiBOT")
+
+    # ----------------------------------------------
+    # Article search
+    # ----------------------------------------------
+
+    def search_articles(
+        query: str
+    ) -> list[str]:
+        """Get article suggestions from the backend."""
+
+        if len(query.strip()) < 2:
+            return []
+
+        try:
+            return backend.suggest_articles(
+                query=query,
+                limit=8
+            )
+
+        except Exception as error:
+
+            print(
+                f"[SEARCH] Suggestion error: "
+                f"{error}"
+            )
+
+            return []
+
+
     article_title = st_searchbox(
         search_function=search_articles,
         placeholder="Search Wikipedia articles...",
@@ -97,42 +156,85 @@ with st.sidebar:
         default_searchterm="Google"
     )
 
+    # ----------------------------------------------
+    # Load article
+    # ----------------------------------------------
+
+    if article_title:
+
+        article_title = article_title.strip()
+
+        if (
+            article_title
+            and article_title
+            != st.session_state.get("article_title")
+        ):
+
+            with st.spinner(
+                f"Loading '{article_title}'..."
+            ):
+
+                try:
+
+                    backend.load_knowledge(
+                        article_title
+                    )
+
+                    st.session_state.backend = (
+                        backend
+                    )
+
+                    st.session_state.article_title = (
+                        article_title
+                    )
+
+                    st.session_state.model_key = (
+                        model_key
+                    )
+
+                    st.session_state.messages = []
+
+                    st.success(
+                        f"Loaded '{article_title}'"
+                    )
+
+                except Exception as error:
+
+                    st.error(
+                        f"Failed to load knowledge: "
+                        f"{error}"
+                    )
+
+    # ----------------------------------------------
+    # Article panel
+    # ----------------------------------------------
+
+    st.divider()
+
+    st.subheader("Article")
+
+    if st.session_state.get("article_title"):
+
+        # Inner scrollable article panel.
+        with st.container(
+            height=650,
+            border=True
+        ):
+
+            render_article_sections(
+                backend
+            )
+
+    else:
+
+        st.caption(
+            "Search and select a Wikipedia article "
+            "to view its contents."
+        )
+
 
 # --------------------------------------------------
-# Load Knowledge
-# --------------------------------------------------
-
-if article_title:
-    article_title = article_title.strip()
-
-    # Load only when a new article is selected.
-    if (
-        article_title
-        and article_title
-        != st.session_state.get("article_title")
-    ):
-
-        with st.spinner(f"Loading '{article_title}'..."):
-            try:
-                backend.load_knowledge(article_title)
-
-                st.session_state.backend = backend
-                st.session_state.article_title = article_title
-                st.session_state.model_key = model_key
-                st.session_state.messages = []
-
-                st.sidebar.success(
-                    f"Loaded '{article_title}'"
-                )
-
-            except Exception as error:
-                st.sidebar.error(
-                    f"Failed to load knowledge: {error}"
-                )
-
-
-# --------------------------------------------------
-# Main UI
+# Main chatbot area
 # --------------------------------------------------
 
 st.title("🤖 wikiBOT")
@@ -141,6 +243,18 @@ st.write(
     "Ask questions about a Wikipedia article "
     "using local RAG."
 )
+
+
+# --------------------------------------------------
+# Current article
+# --------------------------------------------------
+
+if st.session_state.get("article_title"):
+
+    st.caption(
+        f"Article: "
+        f"{st.session_state['article_title']}"
+    )
 
 
 # --------------------------------------------------
@@ -153,8 +267,13 @@ if "messages" not in st.session_state:
 
 for message in st.session_state.messages:
 
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    with st.chat_message(
+        message["role"]
+    ):
+
+        st.markdown(
+            message["content"]
+        )
 
 
 # --------------------------------------------------
@@ -188,6 +307,7 @@ if question:
         )
 
         with st.chat_message("user"):
+
             st.markdown(question)
 
         # ------------------------------------------
@@ -221,7 +341,9 @@ if question:
                         f"{error}"
                     )
 
-                    st.error(error_message)
+                    st.error(
+                        error_message
+                    )
 
                     st.session_state.messages.append(
                         {

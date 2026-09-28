@@ -149,10 +149,17 @@ def fetch_wikipedia_article(title: str) -> dict:
 
     sections = []
 
-    for section in page.sections:
-        sections.extend(
-            extract_section(section)
+    # Wikipedia's lead/introduction is stored separately from page.sections.
+    if page.summary.strip():
+        sections.append(
+            {
+                "title": "Introduction",
+                "text": clean_text(page.summary),
+            }
         )
+
+    for section in page.sections:
+        sections.extend(extract_section(section))
 
     # --------------------------------------------------
     # Extract links

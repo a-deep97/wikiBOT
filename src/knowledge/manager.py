@@ -34,6 +34,7 @@ class KnowledgeManager:
 
             article_id = cached_article[0]
 
+            # Return cached chunks.
             return self.database.get_chunks(
                 article_id
             )
@@ -47,7 +48,14 @@ class KnowledgeManager:
             title
         )
 
-        # Convert article into chunks.
+        # Save the original article sections for
+        # the article viewer.
+        self.database.save_article_sections(
+            article_title=article["title"],
+            sections=article["sections"],
+        )
+
+        # Convert article into chunks for RAG.
         chunks = chunk_text(
             [article]
         )

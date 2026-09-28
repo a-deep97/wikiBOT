@@ -5,7 +5,7 @@ from pathlib import Path
 class SQLiteStore:
     """
     Persistent local storage for Wikipedia articles,
-    chunks, and links.
+    chunks, links, and structured article sections.
     """
 
     def __init__(self, db_path: str = "data/wikibot.db"):
@@ -34,6 +34,10 @@ class SQLiteStore:
 
         cursor = self.connection.cursor()
 
+        # --------------------------------------------------
+        # Articles
+        # --------------------------------------------------
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS articles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,6 +45,10 @@ class SQLiteStore:
                 fetched_at TEXT NOT NULL
             )
         """)
+
+        # --------------------------------------------------
+        # RAG chunks
+        # --------------------------------------------------
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS chunks (
@@ -58,6 +66,10 @@ class SQLiteStore:
             )
         """)
 
+        # --------------------------------------------------
+        # Article links
+        # --------------------------------------------------
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS links (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,7 +84,27 @@ class SQLiteStore:
             )
         """)
 
+        # --------------------------------------------------
+        # Structured article sections
+        # --------------------------------------------------
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS article_sections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                article_title TEXT NOT NULL,
+                section_order INTEGER NOT NULL,
+                section_title TEXT NOT NULL,
+                section_text TEXT NOT NULL,
+
+                UNIQUE(article_title, section_order)
+            )
+        """)
+
         self.connection.commit()
+
+    # ------------------------------------------------------
+    # Articles
+    # ------------------------------------------------------
 
     def get_article(self, title: str):
 
@@ -111,6 +143,10 @@ class SQLiteStore:
 
         return article[0]
 
+    # ------------------------------------------------------
+    # Chunks
+    # ------------------------------------------------------
+
     def save_chunks(
         self,
         article_id: int,
@@ -134,29 +170,6 @@ class SQLiteStore:
                 chunk["section"],
                 chunk["chunk_index"],
                 chunk["content"]
-            ))
-
-        self.connection.commit()
-
-    def save_links(
-        self,
-        article_id: int,
-        links: list[str]
-    ):
-
-        cursor = self.connection.cursor()
-
-        for link in links:
-
-            cursor.execute("""
-                INSERT OR IGNORE INTO links (
-                    source_article_id,
-                    target_title
-                )
-                VALUES (?, ?)
-            """, (
-                article_id,
-                link
             ))
 
         self.connection.commit()
@@ -189,6 +202,33 @@ class SQLiteStore:
             for row in rows
         ]
 
+    # ------------------------------------------------------
+    # Links
+    # ------------------------------------------------------
+
+    def save_links(
+        self,
+        article_id: int,
+        links: list[str]
+    ):
+
+        cursor = self.connection.cursor()
+
+        for link in links:
+
+            cursor.execute("""
+                INSERT OR IGNORE INTO links (
+                    source_article_id,
+                    target_title
+                )
+                VALUES (?, ?)
+            """, (
+                article_id,
+                link
+            ))
+
+        self.connection.commit()
+
     def get_links(
         self,
         article_id: int
@@ -207,6 +247,113 @@ class SQLiteStore:
             for row in cursor.fetchall()
         ]
 
+    # ------------------------------------------------------
+    # Article sections
+    # ------------------------------------------------------
+
+    def save_article_sections(
+        self,
+        article_title: str,
+        sections: list[dict[str, str]],
+    ) -> None:
+        """
+        Save the structured sections of an article.
+
+        Existing sections for the article are replaced so
+        the cache always represents the latest loaded article.
+        """
+
+        cursor = self.connection.cursor()
+
+        # Remove existing cached sections.
+        cursor.execute(
+            """
+            DELETE FROM article_sections
+            WHERE article_title = ?
+            """,
+            (article_title,),
+        )
+
+        # Save sections in their original order.
+        for index, section in enumerate(sections):
+
+            cursor.execute(
+                """
+                INSERT INTO article_sections (
+                    article_title,
+                    section_order,
+                    section_title,
+                    section_text
+                )
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    article_title,
+                    index,
+                    section["title"],
+                    section["text"],
+                ),
+            )
+
+        self.connection.commit()
+
+    def get_article_sections(
+        self,
+        article_title: str,
+    ) -> list[dict[str, str]]:
+        """
+        Return cached sections for an article
+        in their original order.
+        """
+
+        cursor = self.connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                section_title,
+                section_text
+            FROM article_sections
+            WHERE article_title = ?
+            ORDER BY section_order
+            """,
+            (article_title,),
+        )
+
+        rows = cursor.fetchall()
+
+        return [
+            {
+                "title": row[0],
+                "text": row[1],
+            }
+            for row in rows
+        ]
+
+    def has_article_sections(
+        self,
+        article_title: str
+    ) -> bool:
+        """Return whether cached sections exist for an article."""
+
+        cursor = self.connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT 1
+            FROM article_sections
+            WHERE article_title = ?
+            LIMIT 1
+            """,
+            (article_title,),
+        )
+
+        return cursor.fetchone() is not None
+
+    # ------------------------------------------------------
+    # Utility
+    # ------------------------------------------------------
+
     def article_exists(
         self,
         title: str
@@ -221,19 +368,16 @@ class SQLiteStore:
         cursor.execute(
             "SELECT COUNT(*) FROM articles"
         )
-
         articles = cursor.fetchone()[0]
 
         cursor.execute(
             "SELECT COUNT(*) FROM chunks"
         )
-
         chunks = cursor.fetchone()[0]
 
         cursor.execute(
             "SELECT COUNT(*) FROM links"
         )
-
         links = cursor.fetchone()[0]
 
         return {
