@@ -8,93 +8,108 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import streamlit as st
 
-from streamlit_searchbox import st_searchbox
-
 from src.backend.manager import WikiBotBackend
 from src.models.data import AVAILABLE_MODELS, DEFAULT_MODEL
-from tests.app_web.helpers import render_article_sections
+from tests.app_web.helpers import (
+    add_qna,
+    get_qna,
+    render_article_sections,
+)
+from streamlit_searchbox import st_searchbox
 
-# --------------------------------------------------
-# Page configuration
-# --------------------------------------------------
 
 st.set_page_config(
     page_title="wikiBOT",
     page_icon="🤖",
-    layout="wide"
+    layout="wide",
 )
 
 
-# --------------------------------------------------
-# Sidebar sizing
-# --------------------------------------------------
-#
-# Streamlit's sidebar is natively resizable.
-#
-# Default width:
-#   ~43% of the main usable application width
-#
-# This gives approximately:
-#
-#   Article : Chatbot
-#      3   :    4
-#
-# The sidebar itself remains draggable.
-# --------------------------------------------------
+# ============================================================
+# Global UI styling
+# ============================================================
 
 st.markdown(
     """
     <style>
 
-    /* Default article/sidebar width */
-    [data-testid="stSidebar"] {
-        min-width: 360px !important;
-        width: 51% !important;
-        max-width: 800px !important;
+    /* -------------------------------------------------------
+       Hide Streamlit top toolbar
+       ------------------------------------------------------- */
+
+    [data-testid="stToolbar"] {
+        display: none;
     }
 
-    /* Keep the sidebar contents inside the available width */
+    [data-testid="stHeader"] {
+        background: transparent;
+    }
+
+
+    /* -------------------------------------------------------
+       Resizable sidebar
+       ------------------------------------------------------- */
+
+    [data-testid="stSidebar"] {
+        min-width: 400px !important;
+        width: 48% !important;
+        max-width: 700px !important;
+    }
+
     [data-testid="stSidebarContent"] {
         min-width: 0 !important;
     }
 
-    /* Prevent the main chatbot area from becoming too narrow */
     [data-testid="stMain"] {
-        min-width: 600px !important;
+        min-width: 520px !important;
     }
 
-    </style>
 
-    <style>
-    [data-testid="stSpinner"] {
+    /* -------------------------------------------------------
+       Main navigation
+       ------------------------------------------------------- */
+
+    div[data-testid="stRadio"] > div {
+        gap: 8px;
+    }
+
+    div[data-testid="stRadio"] label {
         font-size: 20px !important;
+        font-weight: 600 !important;
     }
 
-    [data-testid="stSpinner"] p {
-        font-size: 30px !important;
-        font-weight: 500 !important;
+
+    /* -------------------------------------------------------
+       QnA add button
+       ------------------------------------------------------- */
+
+    button[key^="add_qna_"] {
+        font-size: 22px !important;
+        font-weight: 600 !important;
+        min-height: 38px !important;
+        width: 38px !important;
+        padding: 0 !important;
     }
+
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 
-# --------------------------------------------------
-# Cached backend
-# --------------------------------------------------
+# ============================================================
+# Backend
+# ============================================================
 
-@st.cache_resource(show_spinner=" Waking up wikiBOT... Loading its brain.")
+@st.cache_resource(
+    show_spinner="🧠 Waking up wikiBOT... Loading its brain."
+)
 def get_backend(model_key: str):
-    """
-    Create and cache a wikiBOT backend for a model.
-    """
-
     backend = WikiBotBackend(
         model_key=model_key,
         top_k=3,
         candidate_k=10,
-        similarity_threshold=0.35
+        similarity_threshold=0.35,
     )
 
     backend.load_resources()
@@ -102,9 +117,9 @@ def get_backend(model_key: str):
     return backend
 
 
-# --------------------------------------------------
-# Initialize backend
-# --------------------------------------------------
+# ============================================================
+# Model selection
+# ============================================================
 
 model_keys = list(AVAILABLE_MODELS.keys())
 
@@ -114,46 +129,42 @@ model_key = st.sidebar.selectbox(
     index=model_keys.index(DEFAULT_MODEL),
     format_func=lambda key: (
         f"{key} - {AVAILABLE_MODELS[key]['name']}"
-    )
+    ),
 )
+
 
 backend = get_backend(model_key)
 
-# --------------------------------------------------
+
+# ============================================================
 # Sidebar
-# --------------------------------------------------
+# ============================================================
+
+st.sidebar.title("wikiBOT")
+
+
+def search_articles(query: str) -> list[str]:
+    """Return Wikipedia article suggestions."""
+
+    if len(query.strip()) < 2:
+        return []
+
+    try:
+        return backend.suggest_articles(
+            query=query,
+            limit=8,
+        )
+
+    except Exception as error:
+        print(f"[SEARCH] Suggestion error: {error}")
+        return []
+
 
 with st.sidebar:
 
-    st.title("wikiBOT")
-
-    # ----------------------------------------------
-    # Article search
-    # ----------------------------------------------
-
-    def search_articles(
-        query: str
-    ) -> list[str]:
-        """Get article suggestions from the backend."""
-
-        if len(query.strip()) < 2:
-            return []
-
-        try:
-            return backend.suggest_articles(
-                query=query,
-                limit=8
-            )
-
-        except Exception as error:
-
-            print(
-                f"[SEARCH] Suggestion error: "
-                f"{error}"
-            )
-
-            return []
-
+    # --------------------------------------------------------
+    # Wikipedia search
+    # --------------------------------------------------------
 
     article_title = st_searchbox(
         search_function=search_articles,
@@ -162,11 +173,13 @@ with st.sidebar:
         key="wiki_article_search",
         debounce=300,
         edit_after_submit="option",
+        default_searchterm="Google",
     )
 
-    # ----------------------------------------------
+
+    # --------------------------------------------------------
     # Load article
-    # ----------------------------------------------
+    # --------------------------------------------------------
 
     if article_title:
 
@@ -183,23 +196,15 @@ with st.sidebar:
             ):
 
                 try:
-
                     backend.load_knowledge(
                         article_title
                     )
 
-                    st.session_state.backend = (
-                        backend
-                    )
-
+                    st.session_state.backend = backend
                     st.session_state.article_title = (
                         article_title
                     )
-
-                    st.session_state.model_key = (
-                        model_key
-                    )
-
+                    st.session_state.model_key = model_key
                     st.session_state.messages = []
 
                     st.success(
@@ -209,26 +214,25 @@ with st.sidebar:
                 except Exception as error:
 
                     st.error(
-                        f"Failed to load knowledge: "
-                        f"{error}"
+                        f"Failed to load knowledge: {error}"
                     )
 
-    # ----------------------------------------------
-    # Article panel
-    # ----------------------------------------------
 
     st.divider()
+
+
+    # --------------------------------------------------------
+    # Article reader
+    # --------------------------------------------------------
 
     st.subheader("Article")
 
     if st.session_state.get("article_title"):
 
-        # Inner scrollable article panel.
         with st.container(
             height=650,
-            border=True
+            border=True,
         ):
-
             render_article_sections(
                 backend
             )
@@ -241,121 +245,198 @@ with st.sidebar:
         )
 
 
-# --------------------------------------------------
-# Main chatbot area
-# --------------------------------------------------
+# ============================================================
+# Main navigation
+# ============================================================
 
-st.title("🤖 wikiBOT")
+if "active_section" not in st.session_state:
+    st.session_state.active_section = "🤖 Chatbot"
 
-st.write(
-    "Ask questions about a Wikipedia article "
-    "using local RAG."
+
+active_section = st.radio(
+    "Navigation",
+    ["🤖 Chatbot", "📚 QnA"],
+    horizontal=True,
+    label_visibility="collapsed",
+    key="active_section",
 )
 
 
-# --------------------------------------------------
-# Current article
-# --------------------------------------------------
+# ============================================================
+# Chatbot
+# ============================================================
 
-if st.session_state.get("article_title"):
+if active_section == "🤖 Chatbot":
 
-    st.caption(
-        f"Article: "
-        f"{st.session_state['article_title']}"
+    st.title("🤖 wikiBOT")
+
+    st.write(
+        "Ask questions about a Wikipedia article "
+        "using local RAG."
     )
 
 
-# --------------------------------------------------
-# Chat history
-# --------------------------------------------------
+    # --------------------------------------------------------
+    # Initialize chat history
+    # --------------------------------------------------------
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-
-for message in st.session_state.messages:
-
-    with st.chat_message(
-        message["role"]
-    ):
-
-        st.markdown(
-            message["content"]
-        )
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
 
-# --------------------------------------------------
-# Chat input
-# --------------------------------------------------
+    # --------------------------------------------------------
+    # Render chat history
+    # --------------------------------------------------------
 
-question = st.chat_input(
-    "Ask a question..."
-)
+    for index, message in enumerate(st.session_state.messages):
+
+        with st.chat_message(message["role"]):
+
+            if message["role"] == "user":
+                st.markdown(message["content"])
+
+            else:
+                col_answer, col_add = st.columns(
+                    [0.90, 0.10],
+                    vertical_alignment="top",
+                )
+
+                with col_answer:
+                    st.markdown(message["content"])
+
+                with col_add:
+                    if st.button(
+                        "➕",
+                        key=f"add_qna_{index}",
+                        help="Add this Q&A to QnA",
+                    ):
+                        question = ""
+
+                        if index > 0:
+                            previous_message = st.session_state.messages[index - 1]
+
+                            if previous_message["role"] == "user":
+                                question = previous_message["content"]
+
+                        title = st.session_state.get("article_title", "")
+
+                        if question and title:
+                            add_qna(
+                                backend=st.session_state.backend,
+                                title=title,
+                                question=question,
+                                answer=message["content"],
+                            )
+
+                            st.toast("Added to QnA ✓")
 
 
-if question:
+# ============================================================
+# QnA
+# ============================================================
 
-    if "backend" not in st.session_state:
+elif active_section == "📚 QnA":
+    st.title("📚 QnA")
 
-        st.warning(
-            "Please load a Wikipedia article first."
-        )
+    title = st.session_state.get("article_title")
 
+    qna_records = get_qna(
+        backend=st.session_state.backend,
+        title=title,
+    )
+
+    if not qna_records:
+        st.info("No saved Q&A yet.")
     else:
+        for record in qna_records:
+            st.subheader(record["question"])
+            st.write(record["answer"])
+            st.divider()
 
-        # ------------------------------------------
-        # Display user question
-        # ------------------------------------------
 
-        st.session_state.messages.append(
-            {
-                "role": "user",
-                "content": question
-            }
-        )
+# ============================================================
+# Chat input
+#
+# IMPORTANT:
+# Keep this outside st.tabs() / navigation containers.
+# This allows Streamlit to keep the input at the bottom.
+# ============================================================
 
-        with st.chat_message("user"):
+if active_section == "🤖 Chatbot":
 
-            st.markdown(question)
+    question = st.chat_input(
+        "Ask a question..."
+    )
 
-        # ------------------------------------------
-        # Generate answer
-        # ------------------------------------------
+    if question:
 
-        with st.chat_message("assistant"):
+        # ----------------------------------------------------
+        # Check whether an article has been loaded
+        # ----------------------------------------------------
 
-            with st.spinner("Thinking..."):
+        if (
+            "backend" not in st.session_state
+            or not backend.current_article_title
+        ):
 
-                try:
+            st.warning(
+                "Please load a Wikipedia article first."
+            )
 
-                    answer = (
-                        st.session_state.backend
-                        .ask(question)
-                    )
+        else:
 
-                    st.markdown(answer)
+            # ------------------------------------------------
+            # Save user message
+            # ------------------------------------------------
 
-                    st.session_state.messages.append(
-                        {
-                            "role": "assistant",
-                            "content": answer
-                        }
-                    )
+            st.session_state.messages.append(
+                {
+                    "role": "user",
+                    "content": question,
+                }
+            )
 
-                except Exception as error:
 
-                    error_message = (
-                        f"Error generating answer: "
-                        f"{error}"
-                    )
+            with st.chat_message("user"):
+                st.markdown(question)
 
-                    st.error(
-                        error_message
-                    )
 
-                    st.session_state.messages.append(
-                        {
-                            "role": "assistant",
-                            "content": error_message
-                        }
-                    )
+            # ------------------------------------------------
+            # Generate answer
+            # ------------------------------------------------
+
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    try:
+                        answer = st.session_state.backend.ask(question)
+
+                        st.session_state.messages.append(
+                            {"role": "assistant", "content": answer}
+                        )
+
+                        col_answer, col_add = st.columns(
+                            [0.90, 0.10],
+                            vertical_alignment="top",
+                        )
+
+                        with col_answer:
+                            st.markdown(answer)
+
+                        with col_add:
+                            st.button(
+                                "➕",
+                                key=f"add_qna_{len(st.session_state.messages) - 1}",
+                                help="Add this Q&A to QnA",
+                            )
+
+                    except Exception as error:
+                        error_message = f"Error generating answer: {error}"
+
+                        st.error(error_message)
+
+                        st.session_state.messages.append(
+                            {
+                                "role": "assistant",
+                                "content": error_message,
+                            }
+                        )
