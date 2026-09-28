@@ -63,3 +63,7 @@ Added a Streamlit-based graphical interface for wikiBOT to make the RAG system e
 ### 16. Shared Backend Architecture
 
 Refactored wikiBOT to introduce a shared WikiBotBackend responsible for managing the core RAG components and their lifecycle. The backend now owns SQLite knowledge storage, Wikipedia knowledge management, embedding and LLM resources, FAISS and BM25 retrieval stores, and RAG pipeline construction, while the CLI and Streamlit layers focus on user interaction. This also enables expensive resources such as the embedding model and LLM to remain loaded and be reused across multiple article loads instead of being recreated by the interface layer.
+
+### 17. Wikipedia Article Autocomplete
+
+Added Wikipedia article autocomplete to the Streamlit search interface, allowing users to search and select article titles directly from suggestions while typing. The feature uses Wikipedia's search API through the backend, with short-lived caching of suggestions to reduce repeated API requests. The search functionality is kept in the backend so it can be reused by other interfaces in the future, while the Streamlit layer only handles user interaction and article selection.

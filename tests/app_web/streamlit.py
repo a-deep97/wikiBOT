@@ -85,6 +85,7 @@ def search_articles(query: str) -> list[str]:
         print(f"[SEARCH] Suggestion error: {error}")
         return []
 
+
 with st.sidebar:
     article_title = st_searchbox(
         search_function=search_articles,
@@ -93,7 +94,7 @@ with st.sidebar:
         key="wiki_article_search",
         debounce=300,
         edit_after_submit="option",
-        default_searchterm="Python"
+        default_searchterm="Google"
     )
 
 
@@ -101,40 +102,33 @@ with st.sidebar:
 # Load Knowledge
 # --------------------------------------------------
 
-if st.sidebar.button("Load Knowledge"):
+if article_title:
+    article_title = article_title.strip()
 
-    with st.spinner(
-        f"Loading '{article_title}'..."
+    # Load only when a new article is selected.
+    if (
+        article_title
+        and article_title
+        != st.session_state.get("article_title")
     ):
 
-        try:
-            backend.load_knowledge(
-                article_title
-            )
+        with st.spinner(f"Loading '{article_title}'..."):
+            try:
+                backend.load_knowledge(article_title)
 
-            st.session_state.backend = backend
+                st.session_state.backend = backend
+                st.session_state.article_title = article_title
+                st.session_state.model_key = model_key
+                st.session_state.messages = []
 
-            st.session_state.article_title = (
-                article_title
-            )
+                st.sidebar.success(
+                    f"Loaded '{article_title}'"
+                )
 
-            st.session_state.model_key = (
-                model_key
-            )
-
-            # Start a fresh conversation for
-            # the newly loaded article.
-            st.session_state.messages = []
-
-            st.sidebar.success(
-                f"Loaded '{article_title}'"
-            )
-
-        except Exception as error:
-
-            st.sidebar.error(
-                f"Failed to load knowledge: {error}"
-            )
+            except Exception as error:
+                st.sidebar.error(
+                    f"Failed to load knowledge: {error}"
+                )
 
 
 # --------------------------------------------------
