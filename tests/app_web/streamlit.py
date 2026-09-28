@@ -153,7 +153,6 @@ with st.sidebar:
         key="wiki_article_search",
         debounce=300,
         edit_after_submit="option",
-        default_searchterm="Google"
     )
 
     # ----------------------------------------------
