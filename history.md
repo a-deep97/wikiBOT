@@ -67,3 +67,5 @@ Refactored wikiBOT to introduce a shared WikiBotBackend responsible for managing
 ### 17. Wikipedia Article Autocomplete
 
 Added Wikipedia article autocomplete to the Streamlit search interface, allowing users to search and select article titles directly from suggestions while typing. The feature uses Wikipedia's search API through the backend, with short-lived caching of suggestions to reduce repeated API requests. The search functionality is kept in the backend so it can be reused by other interfaces in the future, while the Streamlit layer only handles user interaction and article selection.
+
+### 18. Wikipedia Article Reader** — Added structured Wikipedia article rendering to the Streamlit sidebar. Article sections are now stored separately in SQLite and displayed as collapsible sections for easier reading, while the existing chunked representation continues to be used independently for RAG retrieval. The article cache was also extended to populate section data for previously cached articles when needed.
