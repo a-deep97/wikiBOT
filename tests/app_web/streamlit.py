@@ -14,7 +14,6 @@ from src.backend.manager import WikiBotBackend
 from src.models.data import AVAILABLE_MODELS, DEFAULT_MODEL
 from tests.app_web.helpers import render_article_sections
 
-
 # --------------------------------------------------
 # Page configuration
 # --------------------------------------------------
@@ -65,6 +64,17 @@ st.markdown(
     }
 
     </style>
+
+    <style>
+    [data-testid="stSpinner"] {
+        font-size: 20px !important;
+    }
+
+    [data-testid="stSpinner"] p {
+        font-size: 30px !important;
+        font-weight: 500 !important;
+    }
+    </style>
     """,
     unsafe_allow_html=True,
 )
@@ -74,7 +84,7 @@ st.markdown(
 # Cached backend
 # --------------------------------------------------
 
-@st.cache_resource
+@st.cache_resource(show_spinner=" Waking up wikiBOT... Loading its brain.")
 def get_backend(model_key: str):
     """
     Create and cache a wikiBOT backend for a model.
@@ -108,7 +118,6 @@ model_key = st.sidebar.selectbox(
 )
 
 backend = get_backend(model_key)
-
 
 # --------------------------------------------------
 # Sidebar
