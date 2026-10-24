@@ -19,10 +19,12 @@ def render_sidebar(
     """
 
     with st.sidebar:
-        st.markdown("# 🧠 wikiBOT")
-        st.caption("Your personal Wikipedia research assistant")
-        st.divider()
 
+        selected_article = render_search_panel(
+            search_function=search_function,
+            recent_searches=recent_searches,
+        )
+        
         active_section = st.radio(
             "WORKSPACE",
             options=[
@@ -33,15 +35,5 @@ def render_sidebar(
             key="active_section",
             label_visibility="visible",
         )
-
-        st.divider()
-
-        selected_article = render_search_panel(
-            search_function=search_function,
-            recent_searches=recent_searches,
-        )
-
-        st.divider()
-        st.caption("Powered by retrieval-augmented generation")
 
     return active_section, selected_article

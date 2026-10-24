@@ -21,6 +21,8 @@ def render_search_panel(
 
         return search_function(query.strip())
 
+    recent_options = recent_searches[:20]
+
     selected_article = st_searchbox(
         search_function=search_with_recents,
         placeholder="Type a Wikipedia article...",
