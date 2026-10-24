@@ -17,6 +17,7 @@ from src.app_web.helpers import (
 )
 from streamlit_searchbox import st_searchbox
 
+MAX_RECENT_SEARCHES = 5
 
 st.set_page_config(
     page_title="wikiBOT",
@@ -123,20 +124,48 @@ backend = get_backend(model_key)
 
 st.sidebar.title("wikiBOT")
 
+if "recent_searches" not in st.session_state:
+    st.session_state.recent_searches = []
+
+def record_recent_search(title: str) -> None:
+    """Save an article title in recent searches."""
+    if not title:
+        return
+
+    recent = st.session_state.recent_searches
+
+    # Remove duplicates and put the latest selection first.
+    recent = [item for item in recent if item != title]
+    recent.insert(0, title)
+
+    st.session_state.recent_searches = recent[:MAX_RECENT_SEARCHES]
+
+@st.cache_data(ttl=600, show_spinner=False)
+def cached_article_suggestions(
+    model_key: str,
+    query: str,
+) -> list[str]:
+    """Cache article suggestions for 10 minutes."""
+    backend = get_backend(model_key)
+
+    return backend.suggest_articles(
+        query=query,
+        limit=8,
+    )
+
 
 def search_articles(query: str) -> list[str]:
     """Return Wikipedia article suggestions."""
+    query = query.strip()
 
-    if len(query.strip()) < 2:
+    if len(query) < 2:
         return []
 
     try:
-        with st.spinner("🔎 Searching Wikipedia..."):
-            return backend.suggest_articles(
-                query=query,
-                limit=8,
-            )
-
+        return cached_article_suggestions(
+            model_key=model_key,
+            query=query,
+        )
     except Exception as error:
         print(f"[SEARCH] Suggestion error: {error}")
         return []
@@ -157,6 +186,7 @@ with st.sidebar:
         edit_after_submit="option",
         default=None,
         default_searchterm="",
+        default_options=st.session_state.recent_searches,
     )
 
 
@@ -164,9 +194,13 @@ with st.sidebar:
     # Load article
     # --------------------------------------------------------
 
+    # Load article
     if article_title:
 
         article_title = article_title.strip()
+
+        # ADD THIS LINE
+        record_recent_search(article_title)
 
         if (
             article_title
@@ -177,7 +211,6 @@ with st.sidebar:
             with st.spinner(
                 f"Loading '{article_title}'..."
             ):
-
                 try:
                     backend.load_knowledge(
                         article_title
