@@ -22,6 +22,7 @@ st.set_page_config(
     page_title="wikiBOT",
     page_icon="🤖",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 
@@ -44,26 +45,6 @@ st.markdown(
     [data-testid="stHeader"] {
         background: transparent;
     }
-
-
-    /* -------------------------------------------------------
-       Resizable sidebar
-       ------------------------------------------------------- */
-
-    [data-testid="stSidebar"] {
-        min-width: 400px !important;
-        width: 48% !important;
-        max-width: 700px !important;
-    }
-
-    [data-testid="stSidebarContent"] {
-        min-width: 0 !important;
-    }
-
-    [data-testid="stMain"] {
-        min-width: 520px !important;
-    }
-
 
     /* -------------------------------------------------------
        Main navigation
@@ -150,10 +131,11 @@ def search_articles(query: str) -> list[str]:
         return []
 
     try:
-        return backend.suggest_articles(
-            query=query,
-            limit=8,
-        )
+        with st.spinner("🔎 Searching Wikipedia..."):
+            return backend.suggest_articles(
+                query=query,
+                limit=8,
+            )
 
     except Exception as error:
         print(f"[SEARCH] Suggestion error: {error}")
@@ -169,11 +151,12 @@ with st.sidebar:
     article_title = st_searchbox(
         search_function=search_articles,
         placeholder="Search Wikipedia articles...",
-        label="Wikipedia Article",
-        key="wiki_article_search",
+        label=None,
+        key="wiki_article_search_v2",
         debounce=300,
         edit_after_submit="option",
-        default_searchterm="Google",
+        default=None,
+        default_searchterm="",
     )
 
 
