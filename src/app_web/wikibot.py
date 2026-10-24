@@ -8,6 +8,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import streamlit as st
 
+from src.app_web.search_history import add_search, load_search_history
 from src.backend.manager import WikiBotBackend
 from src.models.data import AVAILABLE_MODELS, DEFAULT_MODEL
 from src.app_web.helpers import (
@@ -26,7 +27,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-
+if "recent_searches" not in st.session_state:
+    st.session_state.recent_searches = load_search_history()
+    
 # ============================================================
 # Global UI styling
 # ============================================================
@@ -232,6 +235,9 @@ with st.sidebar:
                     st.error(
                         f"Failed to load knowledge: {error}"
                     )
+
+                finally:
+                    st.session_state.recent_searches = add_search(article_title)
 
 
     st.divider()
