@@ -1,15 +1,23 @@
-from src.database.sqlite_store import SQLiteStore
-from src.knowledge.manager import KnowledgeManager
-from src.data.wikipedia import WikipediaArticleError
-from src.models.shared_resources import (
+"""Core backend for wikiBOT."""
+
+import time
+
+from src.data.wikipedia import (
+    WikipediaArticleError,
+    search_wikipedia_articles,
+)
+
+from ..database.sqlite_store import SQLiteStore
+from ..knowledge.manager import KnowledgeManager
+from ..models.shared_resources import (
     get_shared_embedder,
     get_shared_llm,
 )
-from src.backend.article_context import ArticleContext
+from .article_context import ArticleContext
 
 
 class WikiBotBackend:
-    """Session-specific wikiBOT backend."""
+    """Backend for article loading, retrieval, and question answering."""
 
     def __init__(
         self,
@@ -27,7 +35,7 @@ class WikiBotBackend:
         self.database = SQLiteStore()
         self.knowledge_manager = KnowledgeManager(self.database)
 
-        # Expensive resources are shared through Streamlit's cache.
+        # Shared model resources.
         self.embedder = get_shared_embedder()
         self.llm = get_shared_llm(model_key)
 
@@ -35,12 +43,56 @@ class WikiBotBackend:
         self.article_context = None
         self.current_article_title = None
 
+        # Article autocomplete cache.
+        self._suggestion_cache = {}
+        self._suggestion_cache_ttl = 300
+
     def load_resources(self):
-        """Resources are initialized by the shared-resource functions."""
-        pass
+        """Ensure shared model resources are initialized."""
+        if self.embedder is None:
+            self.embedder = get_shared_embedder()
+
+        if self.llm is None:
+            self.llm = get_shared_llm(self.model_key)
+
+    def suggest_articles(
+        self,
+        query: str,
+        limit: int = 8,
+    ) -> list[str]:
+        """Return Wikipedia article suggestions with caching."""
+        query = query.strip()
+
+        if len(query) < 2:
+            return []
+
+        cache_key = (query.lower(), limit)
+        current_time = time.monotonic()
+
+        cached_result = self._suggestion_cache.get(cache_key)
+
+        if cached_result is not None:
+            cached_time, suggestions = cached_result
+
+            if current_time - cached_time < self._suggestion_cache_ttl:
+                return suggestions
+
+        suggestions = search_wikipedia_articles(
+            query=query,
+            limit=limit,
+        )
+
+        self._suggestion_cache[cache_key] = (
+            current_time,
+            suggestions,
+        )
+
+        return suggestions
 
     def load_knowledge(self, article_title: str):
-        """Build a complete article context before replacing the old one."""
+        """Build an article context before replacing the current one."""
+        self.load_resources()
+
         try:
             chunks = self.knowledge_manager.get_article(article_title)
         except WikipediaArticleError as error:
@@ -61,13 +113,27 @@ class WikiBotBackend:
             similarity_threshold=self.similarity_threshold,
         )
 
-        # Commit state only after all indexes and the pipeline are ready.
+        # Commit state only after the new context is ready.
         self.article_context = new_context
         self.current_article_title = new_context.article_title
 
         return chunks
 
+    def get_article_sections(
+        self,
+        article_title: str | None = None,
+    ) -> list[dict[str, str]]:
+        """Return sections for the requested or current article."""
+        if article_title is None:
+            article_title = self.current_article_title
+
+        if not article_title:
+            return []
+
+        return self.database.get_article_sections(article_title)
+
     def ask(self, question: str) -> str:
+        """Answer a question using the currently loaded article."""
         if self.article_context is None:
             raise RuntimeError(
                 "No knowledge has been loaded. "
@@ -76,16 +142,6 @@ class WikiBotBackend:
 
         return self.article_context.ask(question)
 
-    def get_article_sections(
-        self,
-        article_title: str | None = None,
-    ) -> list[dict[str, str]]:
-        title = article_title or self.current_article_title
-
-        if not title:
-            return []
-
-        return self.database.get_article_sections(title)
-
     def close(self):
+        """Close backend resources."""
         self.database.close()
