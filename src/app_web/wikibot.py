@@ -355,19 +355,26 @@ elif active_section == "📚 QnA":
     st.title("📚 QnA")
 
     title = st.session_state.get("article_title")
+    backend = st.session_state.get("backend")
 
-    qna_records = get_qna(
-        backend=st.session_state.backend,
-        title=title,
-    )
-
-    if not qna_records:
-        st.info("No saved Q&A yet.")
+    if not backend or not title:
+        st.info(
+            "Please search for and load a Wikipedia article "
+            "before viewing its saved Q&A."
+        )
     else:
-        for record in qna_records:
-            st.subheader(record["question"])
-            st.write(record["answer"])
-            st.divider()
+        qna_records = get_qna(
+            backend=backend,
+            title=title,
+        )
+
+        if not qna_records:
+            st.info("No saved Q&A yet.")
+        else:
+            for record in qna_records:
+                st.subheader(record["question"])
+                st.write(record["answer"])
+                st.divider()
 
 
 # ============================================================
