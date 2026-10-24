@@ -10,7 +10,7 @@ import streamlit as st
 
 from src.backend.manager import WikiBotBackend
 from src.models.data import AVAILABLE_MODELS, DEFAULT_MODEL
-from tests.app_web.helpers import (
+from src.app_web.helpers import (
     add_qna,
     get_qna,
     render_article_sections,
