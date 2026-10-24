@@ -8,8 +8,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import streamlit as st
 
+from src.backend.wiki_backend import WikiBotBackend
 from src.app_web.search_history import add_search, load_search_history
-from src.backend.manager import WikiBotBackend
 from src.models.data import AVAILABLE_MODELS, DEFAULT_MODEL
 from src.app_web.helpers import (
     add_qna,
@@ -86,9 +86,7 @@ st.markdown(
 # Backend
 # ============================================================
 
-@st.cache_resource(
-    show_spinner="🧠 Waking up wikiBOT... Loading its brain."
-)
+
 def get_backend(model_key: str):
     backend = WikiBotBackend(
         model_key=model_key,
@@ -96,9 +94,7 @@ def get_backend(model_key: str):
         candidate_k=10,
         similarity_threshold=0.35,
     )
-
     backend.load_resources()
-
     return backend
 
 
@@ -117,8 +113,23 @@ model_key = st.sidebar.selectbox(
     ),
 )
 
+# ============================================================
+# Session-specific backend
+# ============================================================
 
-backend = get_backend(model_key)
+# Create a backend only when the session needs one
+# or when the selected model changes.
+if (
+    "backend" not in st.session_state
+    or st.session_state.get("model_key") != model_key
+):
+    st.session_state.backend = get_backend(model_key)
+    st.session_state.model_key = model_key
+    st.session_state.article_title = None
+    st.session_state.messages = []
+
+# Always reuse the backend belonging to this session.
+backend = st.session_state.backend
 
 
 # ============================================================
