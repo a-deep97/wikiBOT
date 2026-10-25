@@ -17,7 +17,9 @@ class ArticleContext:
         candidate_k: int = 10,
         similarity_threshold: float = 0.35,
     ):
+
         self.article_title = article_title.strip()
+        self.chunk_count = len(chunks)
 
         chunk_texts = [chunk["content"] for chunk in chunks]
         embeddings = embedder.embed_documents(chunk_texts)

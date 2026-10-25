@@ -3,6 +3,9 @@ import html
 import streamlit as st
 
 
+# Must match the option label used by the sidebar navigation radio.
+CHAT_SECTION = "💬 Chat"
+
 def show_loading() -> None:
     """Show the wikiBOT loading message."""
 
@@ -86,6 +89,24 @@ def show_loading() -> None:
     )
 
 
+def count_words(sections: list[dict[str, str]]) -> int:
+    """Return the approximate word count of the given sections."""
+
+    return sum(len(section["text"].split()) for section in sections)
+
+
+def ask_about(question: str) -> None:
+    """
+    Button callback: switch to the chat page and submit a question.
+
+    Callbacks run before the script reruns, so it is safe to change the
+    navigation widget's state here.
+    """
+
+    st.session_state.pending_question = question
+    st.session_state.active_section = CHAT_SECTION
+
+
 def chunk_body(content: str) -> str:
     """Remove the "Article:" / "Section:" header lines added to chunks."""
     lines = content.split("\n")
@@ -126,26 +147,58 @@ def render_status_bar(backend, article_title: str | None) -> None:
     st.markdown(f'<div class="wikibot-chips">{chip_html}</div>', unsafe_allow_html=True)
 
 
-def render_article_sections(backend) -> None:
-    """Render the currently loaded article sections."""
-
+def render_article_sections(
+    backend,
+    query: str = "",
+    expand_all: bool = False,
+) -> int:
     sections = backend.get_article_sections()
+    article_title = backend.current_article_title or "this article"
+
+    needle = query.strip().lower()
+
+    if needle:
+        sections = [
+            section
+            for section in sections
+            if needle in section["title"].lower()
+            or needle in section["text"].lower()
+        ]
 
     if not sections:
-        return
+        st.caption("No sections match your filter.")
+        return 0
 
-    for section in sections:
+    for index, section in enumerate(sections):
         title = section["title"].strip()
         text = section["text"].strip()
 
         if not title:
             continue
 
-        with st.expander(title, expanded=False):
-            if text:
-                st.write(text)
-            else:
+        # Open the introduction by default when browsing unfiltered.
+        open_by_default = (
+            not needle
+            and index == 0
+            and title.lower() == "introduction"
+        )
+
+        with st.expander(title, expanded=expand_all or open_by_default):
+            if not text:
                 st.caption("No content available.")
+                continue
+
+            st.write(text)
+            st.caption(f"{len(text.split()):,} words")
+
+            st.button(
+                "💬 Ask about this section",
+                key=f"ask_section_{index}_{title}",
+                on_click=ask_about,
+                args=(section_question(article_title, title),),
+            )
+
+    return len(sections)
 
 
 def add_qna(backend, title: str, question: str, answer: str) -> bool:

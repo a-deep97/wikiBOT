@@ -24,6 +24,7 @@ Instead of relying solely on the model's internal knowledge, the application ret
 - **Streamlit interface:** Search for Wikipedia articles using autocomplete, automatically load selected articles, read article sections, and interact with the chatbot.
 - **Source-backed answers:** Every chat answer includes a collapsible "Sources" panel showing the article sections and text snippets that were used as context.
 - **Chat conveniences:** Clickable starter questions, a status bar showing the article, model and device, and Clear and Export (Markdown) controls.
+- **Article reader:** Browse the loaded article with summary stats (sections, words, search chunks), a link to the original Wikipedia page, a section filter, an "Expand all" toggle, and an "Ask about this section" button that jumps to the chat with a ready-made question.
 - **QnA interface:** Provide a dedicated UI section for saved question-and-answer pairs; persistent QnA storage is planned.
 
 ## Architecture
@@ -123,10 +124,10 @@ wikiBOT/
 | `src/cli.py` | Command-line interaction with wikiBOT |
 | `src/pipeline.py` | RAG pipeline orchestration; `ask()` returns an answer and `ask_with_sources()` also returns the retrieved chunks |
 | `src/backend/wiki_backend.py` | Shared backend: resource lifecycle, article loading, autocomplete, and question answering |
-| `src/backend/article_context.py` | Retrieval stores and pipeline for one loaded article |
+| `src/backend/article_context.py` | Retrieval stores and pipeline for one loaded article, including its chunk count |
 | `src/app_web/wikibot.py` | Streamlit entry point, model selection, and article loading |
 | `src/app_web/components/` | Streamlit UI sections: sidebar, search, article reader, chat, and Q&A |
-| `src/app_web/helpers.py` | Reusable UI helpers: article rendering, chat source cleanup, status chips, and Q&A UI wrappers |
+| `src/app_web/helpers.py` | Reusable UI helpers: section rendering with filter and expand options, word counts, the section-to-chat jump, chat source cleanup, status chips, and Q&A UI wrappers |
 | `src/app_web/styles.py` | Shared CSS and page header |
 | `src/app_web/search_history.py` | Recent article search history |
 | `src/data/wikipedia.py` | Fetch Wikipedia articles, summaries, sections, and links |
@@ -242,7 +243,12 @@ The model generates an answer based on the available context. The chat calls `as
 
 ### 5. Read the source article
 
-The sidebar displays the loaded article's sections in collapsible panels. Article sections are stored separately from retrieval chunks to support both reading and question answering.
+The **Article Reader** page shows the loaded article's sections in collapsible panels. Article sections are stored separately from retrieval chunks to support both reading and question answering.
+
+- **Overview:** Metrics show the number of sections, the approximate word count, and how many chunks the article was split into for retrieval. An "Open on Wikipedia" button links to the original article.
+- **Filter:** Type in the filter box to show only sections whose title or text contains the search term. The filter is remembered per article.
+- **Expand all:** A toggle opens or collapses every section at once. The Introduction opens by default when no filter is active.
+- **Ask about this section:** Each section has a button that switches to the chat and submits a question about it, for example "What does the article say about Philosophy (Design)?". The Introduction maps to a summary question.
 
 ### 6. Save Q&A records
 
@@ -287,7 +293,7 @@ QnA records will require a backend method and persistent storage implementation,
 
 The core RAG workflow is implemented, including Wikipedia data ingestion, text chunking, embeddings, FAISS search, BM25 retrieval, SQLite caching, language model integration, and a shared backend.
 
-The Streamlit interface supports article autocomplete, automatic article loading, collapsible article sections, chatbot interaction with source citations and starter questions, and a separate QnA navigation section.
+The Streamlit interface supports article autocomplete, automatic article loading, an article reader with filtering and per-section questions, chatbot interaction with source citations and starter questions, and a separate QnA navigation section.
 
 The QnA UI is currently a work in progress. Saving and fetching QnA records through the backend and SQLite are planned but not yet implemented.
 
@@ -332,6 +338,8 @@ The QnA UI is currently a work in progress. Saving and fetching QnA records thro
 19. **Chatbot and QnA Navigation:** Added a main navigation bar to switch between the chatbot and a dedicated QnA section. Added a plus-button interface beside generated responses and introduced UI helper functions for submitting QnA records containing the article title, question, and answer, as well as fetching records for display. The backend persistence and retrieval implementations remain future work.
 
 20. **Chat Interface Improvements:** Reworked the chat page. Answers now come with the chunks used to produce them, shown in a collapsible "Sources" panel, which required adding `ask_with_sources()` to the pipeline, article context and backend (`ask()` is unchanged, so the CLI is unaffected). Added clickable starter questions, status chips for article, model and device, and Clear and Export controls. Fixed the "Add to Q&A" button, which never fired because clicking it reran the script with no new question and the function returned before the button was rendered; the button now lives in the message history and uses a callback.
+
+21. **Article Reader Improvements:** Reworked the Article Reader page. Added summary stats (sections, words, retrieval chunks), an "Open on Wikipedia" link, a section filter, an "Expand all" toggle, and an "Ask about this section" button on each section. The button uses a callback that sets the chat's pending question and switches the navigation to the chat page, so the question is answered immediately. Added `chunk_count` to `ArticleContext` and a `current_chunk_count` property on `WikiBotBackend` to support the stats.
 
 ## Planned Improvements
 
