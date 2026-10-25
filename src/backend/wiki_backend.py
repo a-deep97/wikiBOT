@@ -142,6 +142,15 @@ class WikiBotBackend:
 
         return self.article_context.ask(question)
 
+    def ask_with_sources(self, question: str) -> dict:
+        """Answer a question and return {"answer", "sources"}."""
+        if self.article_context is None:
+            raise RuntimeError(
+                "No knowledge has been loaded. "
+                "Call load_knowledge() first."
+            )
+        return self.article_context.ask_with_sources(question)
+
     def close(self):
         """Close backend resources."""
         self.database.close()

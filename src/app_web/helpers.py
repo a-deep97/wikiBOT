@@ -1,3 +1,5 @@
+import html
+
 import streamlit as st
 
 
@@ -82,6 +84,46 @@ def show_loading() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def chunk_body(content: str) -> str:
+    """Remove the "Article:" / "Section:" header lines added to chunks."""
+    lines = content.split("\n")
+    while lines and lines[0].startswith(("Article: ", "Section: ")):
+        lines.pop(0)
+    return "\n".join(lines).strip()
+
+
+def section_question(article_title: str, section_title: str) -> str:
+    """Turn a section title into a natural question about it."""
+    parts = [part.strip() for part in section_title.split(">")]
+    leaf = parts[-1]
+
+    if leaf.lower() == "introduction":
+        return f"Give me a short summary of {article_title}."
+    if len(parts) > 1:
+        return f"What does the article say about {leaf} ({parts[0]})?"
+    return f"What does the article say about {leaf}?"
+
+
+def render_status_bar(backend, article_title: str | None) -> None:
+    """Show the loaded article, model, and device as small chips."""
+    chips = []
+    if article_title:
+        chips.append(f"📖 {html.escape(article_title)}")
+
+    llm = getattr(backend, "llm", None)
+    if llm is not None:
+        device = getattr(getattr(llm, "device", None), "type", "cpu")
+        model_name = str(getattr(llm, "model_name", "model"))
+        chips.append(f"🤖 {html.escape(model_name.split('/')[-1])}")
+        chips.append("⚡ GPU" if device == "cuda" else "🐢 CPU")
+
+    if not chips:
+        return
+
+    chip_html = "".join(f'<span class="wikibot-chip">{c}</span>' for c in chips)
+    st.markdown(f'<div class="wikibot-chips">{chip_html}</div>', unsafe_allow_html=True)
 
 
 def render_article_sections(backend) -> None:

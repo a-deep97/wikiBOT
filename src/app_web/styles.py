@@ -63,6 +63,15 @@ def apply_global_styles() -> None:
             div[data-testid="stChatMessage"] {
                 border-radius: 12px;
             }
+
+            .wikibot-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0 1rem; }
+            .wikibot-chip {
+                border: 1px solid var(--wikibot-border);
+                border-radius: 999px;
+                padding: 0.15rem 0.7rem;
+                font-size: 0.8rem;
+                color: var(--wikibot-muted);
+            }
         </style>
         """,
         unsafe_allow_html=True,

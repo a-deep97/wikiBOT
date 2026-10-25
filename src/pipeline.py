@@ -152,3 +152,10 @@ class RAGPipeline:
         print("\n--------------")
 
         return self.llm.generate(prompt)
+
+    def ask_with_sources(self, question: str) -> dict:
+        context = self.retrieve(question)
+        if not context:
+            return {"answer": "I could not find relevant information.", "sources": []}
+        prompt = self.build_prompt(question, context)
+        return {"answer": self.llm.generate(prompt), "sources": context}

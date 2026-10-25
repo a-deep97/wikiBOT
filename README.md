@@ -22,6 +22,8 @@ Instead of relying solely on the model's internal knowledge, the application ret
 - **GPU support:** Support CUDA-enabled model execution when compatible hardware and dependencies are available.
 - **Shared backend:** Centralize model resources, storage, retrieval, and RAG orchestration.
 - **Streamlit interface:** Search for Wikipedia articles using autocomplete, automatically load selected articles, read article sections, and interact with the chatbot.
+- **Source-backed answers:** Every chat answer includes a collapsible "Sources" panel showing the article sections and text snippets that were used as context.
+- **Chat conveniences:** Clickable starter questions, a status bar showing the article, model and device, and Clear and Export (Markdown) controls.
 - **QnA interface:** Provide a dedicated UI section for saved question-and-answer pairs; persistent QnA storage is planned.
 
 ## Architecture
@@ -75,12 +77,22 @@ The application uses a shared `WikiBotBackend` to coordinate the main components
 wikiBOT/
 ├── src/
 │   ├── cli.py
+│   ├── config.py
 │   ├── pipeline.py
 │   ├── backend/
-│   │   └── manager.py
+│   │   ├── wiki_backend.py
+│   │   └── article_context.py
 │   ├── app_web/
-│   │   ├── streamlit.py
-│   │   └── helper.py
+│   │   ├── wikibot.py
+│   │   ├── helpers.py
+│   │   ├── styles.py
+│   │   ├── search_history.py
+│   │   └── components/
+│   │       ├── sidebar.py
+│   │       ├── search_panel.py
+│   │       ├── article_reader.py
+│   │       ├── chat_interface.py
+│   │       └── qna_panel.py
 │   ├── data/
 │   │   ├── wikipedia.py
 │   │   └── processor.py
@@ -91,13 +103,16 @@ wikiBOT/
 │   │   └── bm25_store.py
 │   ├── models/
 │   │   ├── data.py
-│   │   └── model.py
+│   │   ├── model.py
+│   │   └── shared_resources.py
 │   ├── database/
 │   │   └── sqlite_store.py
 │   └── knowledge/
 │       └── manager.py
+├── tests/
+│   └── test_database.py
 ├── data/
-│   └── wikibot.db
+│   └── wikibot.db        (created at runtime)
 └── README.md
 ```
 
@@ -106,10 +121,14 @@ wikiBOT/
 | Module | Responsibility |
 |---|---|
 | `src/cli.py` | Command-line interaction with wikiBOT |
-| `src/pipeline.py` | RAG pipeline orchestration |
-| `src/backend/manager.py` | Shared backend and resource lifecycle management |
-| `src/app_web/streamlit.py` | Streamlit application and user interface |
-| `src/app_web/helper.py` | Reusable UI helpers, including article rendering and QnA UI wrappers |
+| `src/pipeline.py` | RAG pipeline orchestration; `ask()` returns an answer and `ask_with_sources()` also returns the retrieved chunks |
+| `src/backend/wiki_backend.py` | Shared backend: resource lifecycle, article loading, autocomplete, and question answering |
+| `src/backend/article_context.py` | Retrieval stores and pipeline for one loaded article |
+| `src/app_web/wikibot.py` | Streamlit entry point, model selection, and article loading |
+| `src/app_web/components/` | Streamlit UI sections: sidebar, search, article reader, chat, and Q&A |
+| `src/app_web/helpers.py` | Reusable UI helpers: article rendering, chat source cleanup, status chips, and Q&A UI wrappers |
+| `src/app_web/styles.py` | Shared CSS and page header |
+| `src/app_web/search_history.py` | Recent article search history |
 | `src/data/wikipedia.py` | Fetch Wikipedia articles, summaries, sections, and links |
 | `src/data/processor.py` | Clean, process, and chunk article content |
 | `src/embeddings/embedder.py` | Generate text embeddings |
@@ -117,6 +136,7 @@ wikiBOT/
 | `src/vector/bm25_store.py` | Keyword-based retrieval using BM25 |
 | `src/models/data.py` | Model configuration and available model definitions |
 | `src/models/model.py` | Language model loading and inference |
+| `src/models/shared_resources.py` | Cached embedder and language model shared across the app |
 | `src/database/sqlite_store.py` | Persistent SQLite storage and retrieval |
 | `src/knowledge/manager.py` | Coordinate article loading, caching, and knowledge preparation |
 
@@ -169,7 +189,7 @@ The exact dependency versions should be maintained in the project's requirements
 From the project root, run:
 
 ```bash
-streamlit run src/app_web/streamlit.py
+streamlit run src/app_web/wikibot.py
 ```
 
 The application provides a Wikipedia article search interface, an article reader, a chatbot, and a QnA section.
@@ -210,7 +230,15 @@ When a question is submitted, wikiBOT searches for relevant chunks using semanti
 
 The RAG pipeline combines the user's question with the retrieved context and sends the resulting prompt to the selected language model.
 
-The model generates an answer based on the available context.
+The model generates an answer based on the available context. The chat calls `ask_with_sources()`, so each answer comes back together with the chunks that were used to build its prompt.
+
+### Chat features
+
+- **Sources:** Each answer has a collapsible "Sources" panel listing the article section and a short snippet for every retrieved chunk. The "Article:" and "Section:" header lines added during chunking are stripped for display.
+- **Starter questions:** When a conversation is empty, the chat suggests a summary question plus questions based on the article's longest sections. Clicking one submits it.
+- **Status bar:** Small chips show the loaded article, the selected model, and whether it runs on GPU or CPU.
+- **Clear and Export:** Clear starts a fresh conversation; Export downloads the conversation as Markdown, including the source sections for each answer.
+- **Add to Q&A:** Each answer has an "Add to Q&A" button. The click is registered and the button switches to a "Saved" state, but it still calls the placeholder `add_qna` helper (see Save Q&A records below), so nothing is persisted yet.
 
 ### 5. Read the source article
 
@@ -220,7 +248,7 @@ The sidebar displays the loaded article's sections in collapsible panels. Articl
 
 The interface includes a QnA section and a UI wrapper for submitting records containing the article title, question, and answer.
 
-The actual backend operation and persistent QnA storage are not yet implemented. Once added, the QnA section will retrieve saved records through the backend and display them.
+The actual backend operation and persistent QnA storage are not yet implemented: `add_qna` and `get_qna` in `src/app_web/helpers.py` are placeholders that only print to the terminal. Once the backend is added, the QnA section will retrieve saved records through it and display them.
 
 ## Retrieval Configuration
 
@@ -259,7 +287,7 @@ QnA records will require a backend method and persistent storage implementation,
 
 The core RAG workflow is implemented, including Wikipedia data ingestion, text chunking, embeddings, FAISS search, BM25 retrieval, SQLite caching, language model integration, and a shared backend.
 
-The Streamlit interface supports article autocomplete, automatic article loading, collapsible article sections, chatbot interaction, and a separate QnA navigation section.
+The Streamlit interface supports article autocomplete, automatic article loading, collapsible article sections, chatbot interaction with source citations and starter questions, and a separate QnA navigation section.
 
 The QnA UI is currently a work in progress. Saving and fetching QnA records through the backend and SQLite are planned but not yet implemented.
 
@@ -302,6 +330,8 @@ The QnA UI is currently a work in progress. Saving and fetching QnA records thro
 18. **Wikipedia Article Reader:** Added structured Wikipedia article rendering to the Streamlit sidebar. Article sections are stored separately in SQLite and displayed as collapsible sections for easier reading, while the existing chunked representation continues to be used independently for RAG retrieval. The article cache was also extended to populate section data for previously cached articles when needed.
 
 19. **Chatbot and QnA Navigation:** Added a main navigation bar to switch between the chatbot and a dedicated QnA section. Added a plus-button interface beside generated responses and introduced UI helper functions for submitting QnA records containing the article title, question, and answer, as well as fetching records for display. The backend persistence and retrieval implementations remain future work.
+
+20. **Chat Interface Improvements:** Reworked the chat page. Answers now come with the chunks used to produce them, shown in a collapsible "Sources" panel, which required adding `ask_with_sources()` to the pipeline, article context and backend (`ask()` is unchanged, so the CLI is unaffected). Added clickable starter questions, status chips for article, model and device, and Clear and Export controls. Fixed the "Add to Q&A" button, which never fired because clicking it reran the script with no new question and the function returned before the button was rendered; the button now lives in the message history and uses a callback.
 
 ## Planned Improvements
 

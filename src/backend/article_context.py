@@ -42,3 +42,6 @@ class ArticleContext:
 
     def ask(self, question: str) -> str:
         return self.pipeline.ask(question)
+
+    def ask_with_sources(self, question: str) -> dict:
+        return self.pipeline.ask_with_sources(question)
