@@ -47,6 +47,14 @@ class WikiBotBackend:
         self._suggestion_cache = {}
         self._suggestion_cache_ttl = 300
 
+    @property
+    def current_chunk_count(self) -> int:
+        """Number of retrieval chunks for the loaded article."""
+        if self.article_context is None:
+            return 0
+
+        return self.article_context.chunk_count
+    
     def load_resources(self):
         """Ensure shared model resources are initialized."""
         if self.embedder is None:

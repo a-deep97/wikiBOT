@@ -16,7 +16,7 @@ Instead of relying solely on the model's internal knowledge, the application ret
 - **Keyword retrieval:** Use BM25 to retrieve relevant passages based on keyword matches.
 - **Hybrid retrieval:** Combine semantic and keyword-based retrieval candidates.
 - **Similarity filtering:** Filter semantic search results using a configurable similarity threshold.
-- **Persistent storage:** Cache article content, chunks, links, and sections in SQLite.
+- **Persistent storage:** Cache article content, chunks, links, sections, and saved Q&A in SQLite.
 - **Knowledge management:** Reuse cached article data and expand knowledge through Wikipedia links.
 - **Multiple language models:** Select from supported causal and sequence-to-sequence models.
 - **GPU support:** Support CUDA-enabled model execution when compatible hardware and dependencies are available.
@@ -24,7 +24,8 @@ Instead of relying solely on the model's internal knowledge, the application ret
 - **Streamlit interface:** Search for Wikipedia articles using autocomplete, automatically load selected articles, read article sections, and interact with the chatbot.
 - **Source-backed answers:** Every chat answer includes a collapsible "Sources" panel showing the article sections and text snippets that were used as context.
 - **Chat conveniences:** Clickable starter questions, a status bar showing the article, model and device, and Clear and Export (Markdown) controls.
-- **QnA interface:** Provide a dedicated UI section for saved question-and-answer pairs; persistent QnA storage is planned.
+- **Article reader:** Browse the loaded article with summary stats (sections, words, search chunks), a link to the original Wikipedia page, a section filter, an "Expand all" toggle, and an "Ask about this section" button that jumps to the chat with a ready-made question.
+- **Saved Q&A:** Save question-and-answer pairs from the chat with one click. Records are stored in SQLite per article, reloaded whenever that article is opened again, and can be deleted from the Q&A page.
 
 ## Architecture
 
@@ -106,7 +107,8 @@ wikiBOT/
 │   │   ├── model.py
 │   │   └── shared_resources.py
 │   ├── database/
-│   │   └── sqlite_store.py
+│   │   ├── sqlite_store.py
+│   │   └── qna_store.py
 │   └── knowledge/
 │       └── manager.py
 ├── tests/
@@ -122,11 +124,11 @@ wikiBOT/
 |---|---|
 | `src/cli.py` | Command-line interaction with wikiBOT |
 | `src/pipeline.py` | RAG pipeline orchestration; `ask()` returns an answer and `ask_with_sources()` also returns the retrieved chunks |
-| `src/backend/wiki_backend.py` | Shared backend: resource lifecycle, article loading, autocomplete, and question answering |
-| `src/backend/article_context.py` | Retrieval stores and pipeline for one loaded article |
+| `src/backend/wiki_backend.py` | Shared backend: resource lifecycle, article loading, autocomplete, question answering, and saved Q&A (`add_qna`, `get_qna`, `delete_qna`) |
+| `src/backend/article_context.py` | Retrieval stores and pipeline for one loaded article, including its chunk count |
 | `src/app_web/wikibot.py` | Streamlit entry point, model selection, and article loading |
 | `src/app_web/components/` | Streamlit UI sections: sidebar, search, article reader, chat, and Q&A |
-| `src/app_web/helpers.py` | Reusable UI helpers: article rendering, chat source cleanup, status chips, and Q&A UI wrappers |
+| `src/app_web/helpers.py` | Reusable UI helpers: section rendering with filter and expand options, word counts, the section-to-chat jump, chat source cleanup, status chips, and Q&A UI wrappers |
 | `src/app_web/styles.py` | Shared CSS and page header |
 | `src/app_web/search_history.py` | Recent article search history |
 | `src/data/wikipedia.py` | Fetch Wikipedia articles, summaries, sections, and links |
@@ -137,7 +139,8 @@ wikiBOT/
 | `src/models/data.py` | Model configuration and available model definitions |
 | `src/models/model.py` | Language model loading and inference |
 | `src/models/shared_resources.py` | Cached embedder and language model shared across the app |
-| `src/database/sqlite_store.py` | Persistent SQLite storage and retrieval |
+| `src/database/sqlite_store.py` | Persistent SQLite storage and retrieval for articles, chunks, links, and sections |
+| `src/database/qna_store.py` | Saved question-and-answer records, stored in the same SQLite database through a shared connection |
 | `src/knowledge/manager.py` | Coordinate article loading, caching, and knowledge preparation |
 
 ## Technology Stack
@@ -238,17 +241,24 @@ The model generates an answer based on the available context. The chat calls `as
 - **Starter questions:** When a conversation is empty, the chat suggests a summary question plus questions based on the article's longest sections. Clicking one submits it.
 - **Status bar:** Small chips show the loaded article, the selected model, and whether it runs on GPU or CPU.
 - **Clear and Export:** Clear starts a fresh conversation; Export downloads the conversation as Markdown, including the source sections for each answer.
-- **Add to Q&A:** Each answer has an "Add to Q&A" button. The click is registered and the button switches to a "Saved" state, but it still calls the placeholder `add_qna` helper (see Save Q&A records below), so nothing is persisted yet.
+- **Add to Q&A:** Each answer has an "Add to Q&A" button that saves the question and answer for the current article. The button switches to a "Saved" state, and saving the same pair again reports that it is already saved instead of creating a duplicate.
 
 ### 5. Read the source article
 
-The sidebar displays the loaded article's sections in collapsible panels. Article sections are stored separately from retrieval chunks to support both reading and question answering.
+The **Article Reader** page shows the loaded article's sections in collapsible panels. Article sections are stored separately from retrieval chunks to support both reading and question answering.
 
-### 6. Save Q&A records
+- **Overview:** Metrics show the number of sections, the approximate word count, and how many chunks the article was split into for retrieval. An "Open on Wikipedia" button links to the original article.
+- **Filter:** Type in the filter box to show only sections whose title or text contains the search term. The filter is remembered per article.
+- **Expand all:** A toggle opens or collapses every section at once. The Introduction opens by default when no filter is active.
+- **Ask about this section:** Each section has a button that switches to the chat and submits a question about it, for example "What does the article say about Philosophy (Design)?". The Introduction maps to a summary question.
 
-The interface includes a QnA section and a UI wrapper for submitting records containing the article title, question, and answer.
+### 6. Save and review Q&A records
 
-The actual backend operation and persistent QnA storage are not yet implemented: `add_qna` and `get_qna` in `src/app_web/helpers.py` are placeholders that only print to the terminal. Once the backend is added, the QnA section will retrieve saved records through it and display them.
+Use **Add to Q&A** under any chat answer to save that question and answer for the current article. Saving goes through the backend (`add_qna`) into the `qna` table in SQLite.
+
+The **Q&A** page lists the saved records for the current article, newest first, each with the date it was saved and a delete button. The list is read from the database every time the page is shown, so saved records are available whenever the article is loaded again, including after restarting the application.
+
+Q&A records are matched to an article by title, ignoring case. Saving an identical question and answer for the same article twice stores only one record.
 
 ## Retrieval Configuration
 
@@ -278,18 +288,17 @@ The current storage layer manages:
 - **Chunks:** Processed text chunks used by the RAG pipeline.
 - **Links:** Wikipedia links used for knowledge expansion.
 - **Article sections:** Ordered article sections used by the Streamlit reader.
+- **Q&A:** Question-and-answer pairs saved from the chat, with the article title and the time they were saved. This table is managed by `QnAStore` in `src/database/qna_store.py`, which shares the main store's SQLite connection and creates the table automatically if it is missing.
 
 SQLite allows previously processed articles to be reused across application sessions. Existing cached articles can also be supplemented with section data when that data is missing.
-
-QnA records will require a backend method and persistent storage implementation, which are planned for a later development milestone.
 
 ## Current Development Status
 
 The core RAG workflow is implemented, including Wikipedia data ingestion, text chunking, embeddings, FAISS search, BM25 retrieval, SQLite caching, language model integration, and a shared backend.
 
-The Streamlit interface supports article autocomplete, automatic article loading, collapsible article sections, chatbot interaction with source citations and starter questions, and a separate QnA navigation section.
+The Streamlit interface supports article autocomplete, automatic article loading, an article reader with filtering and per-section questions, chatbot interaction with source citations and starter questions, and a separate QnA navigation section.
 
-The QnA UI is currently a work in progress. Saving and fetching QnA records through the backend and SQLite are planned but not yet implemented.
+Saved Q&A is implemented end to end: answers can be saved from the chat, are stored in SQLite, and are listed and deleted from the Q&A page.
 
 ## Development History
 
@@ -333,12 +342,14 @@ The QnA UI is currently a work in progress. Saving and fetching QnA records thro
 
 20. **Chat Interface Improvements:** Reworked the chat page. Answers now come with the chunks used to produce them, shown in a collapsible "Sources" panel, which required adding `ask_with_sources()` to the pipeline, article context and backend (`ask()` is unchanged, so the CLI is unaffected). Added clickable starter questions, status chips for article, model and device, and Clear and Export controls. Fixed the "Add to Q&A" button, which never fired because clicking it reran the script with no new question and the function returned before the button was rendered; the button now lives in the message history and uses a callback.
 
+21. **Article Reader Improvements:** Reworked the Article Reader page. Added summary stats (sections, words, retrieval chunks), an "Open on Wikipedia" link, a section filter, an "Expand all" toggle, and an "Ask about this section" button on each section. The button uses a callback that sets the chat's pending question and switches the navigation to the chat page, so the question is answered immediately. Added `chunk_count` to `ArticleContext` and a `current_chunk_count` property on `WikiBotBackend` to support the stats.
+
+22. **Persistent Saved Q&A:** Implemented saving and loading of Q&A records. Added `QnAStore` in `src/database/qna_store.py`, which owns the `qna` table and shares the existing SQLite connection, keeping `SQLiteStore` focused on articles, chunks, links, and sections. `WikiBotBackend` gained thin `add_qna`, `get_qna`, and `delete_qna` methods, and the placeholder `add_qna` and `get_qna` helpers now call them. The chat's "Add to Q&A" button reports whether a record was newly saved or already existed, and the Q&A page lists records for the current article from the database, with a date and a delete button for each.
+
 ## Planned Improvements
 
-- Implement backend methods for saving and fetching QnA records.
-- Add persistent QnA storage and connect the UI wrappers to the backend.
-- Display saved Q&A records in the QnA section.
-- Add QnA management features such as removing records and filtering by article.
+- Add Q&A search, export, and a view of saved records across all articles.
+- Store the source chunks with saved Q&A so the sources can be shown on the Q&A page.
 - Improve retrieval quality with a dedicated reranking stage.
 - Expand retrieval evaluation and testing.
 - Improve observability, error handling, and performance measurements.
