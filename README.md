@@ -27,6 +27,7 @@ Instead of relying solely on the model's internal knowledge, the application ret
 - **Chat conveniences:** Clickable starter questions, a status bar showing the article, model and device, and Clear and Export (Markdown) controls.
 - **Article reader:** Browse the loaded article with summary stats (sections, words, search chunks), a link to the original Wikipedia page, a section filter, an "Expand all" toggle, and an "Ask about this section" button that jumps to the chat with a ready-made question.
 - **Saved Q&A:** Save question-and-answer pairs from the chat with one click. Records are stored in SQLite per article and loaded again whenever that article is opened.
+- **QnA interface:** Provide a dedicated UI section for saved question-and-answer pairs; persistent QnA storage is planned.
 
 ## Architecture
 
@@ -355,8 +356,11 @@ Saved Q&A is implemented end to end: answers can be saved from the chat, are sto
 
 21. **Article Reader Improvements:** Reworked the Article Reader page. Added summary stats (sections, words, retrieval chunks), an "Open on Wikipedia" link, a section filter, an "Expand all" toggle, and an "Ask about this section" button on each section. The button uses a callback that sets the chat's pending question and switches the navigation to the chat page, so the question is answered immediately. Added `chunk_count` to `ArticleContext` and a `current_chunk_count` property on `WikiBotBackend` to support the stats.
 
+<<<<<<< HEAD
 22. **Persistent Saved Q&A:** Implemented end-to-end saving and retrieval of question-and-answer records. `QnAManager` manages Q&A records in SQLite using the shared database connection. Answers can be saved from the chat, duplicate records are handled, and saved Q&A records can be reviewed for the selected article across application sessions.
 
+=======
+>>>>>>> 3b0586f6b35ffb32c6a0d1877c05f412bfce040e
 ## Planned Improvements
 
 - Add Q&A management features such as removing records, searching, and exporting.
