@@ -14,8 +14,9 @@ Instead of relying solely on the model's internal knowledge, the application ret
 - **Text processing:** Clean article content and split it into sentence-aware chunks.
 - **Semantic retrieval:** Generate embeddings using Sentence Transformers and search with FAISS.
 - **Keyword retrieval:** Use BM25 to retrieve relevant passages based on keyword matches.
-- **Hybrid retrieval:** Combine semantic and keyword-based retrieval candidates.
-- **Similarity filtering:** Filter semantic search results using a configurable similarity threshold.
+- **Hybrid retrieval:** Combine FAISS semantic-search results and BM25 keyword-search results using Reciprocal Rank Fusion (RRF).
+- **Similarity filtering:** Filter FAISS semantic-search results using a configurable similarity threshold before hybrid ranking.
+- **Rank-based fusion:** Combine retriever rankings without directly comparing their raw scores, improving the selection of relevant context chunks.
 - **Persistent storage:** Cache article content, chunks, links, sections, and saved Q&A in SQLite.
 - **Knowledge management:** Reuse cached article data and expand knowledge through Wikipedia links.
 - **Multiple language models:** Select from supported causal and sequence-to-sequence models.
@@ -70,7 +71,9 @@ Instead of relying solely on the model's internal knowledge, the application ret
                        Final Answer
 ```
 
-The application uses a shared `WikiBotBackend` to coordinate the main components. The CLI and Streamlit interface interact with this backend instead of independently managing model resources, databases, and retrieval components.
+The application uses a shared `WikiBotBackend` to coordinate article loading, storage, retrieval, and question answering.
+
+For each question, the RAG pipeline retrieves candidates using FAISS semantic search and BM25 keyword search. FAISS results are filtered using the configured similarity threshold, and the remaining results are combined with BM25 results using Reciprocal Rank Fusion (RRF). The highest-ranked unique chunks are selected as context for the language model, which generates the final answer.
 
 ## Project Structure
 
@@ -124,7 +127,7 @@ wikiBOT/
 | Module | Responsibility |
 |---|---|
 | `src/cli.py` | Command-line interaction with wikiBOT |
-| `src/pipeline.py` | RAG pipeline orchestration; `ask()` returns an answer and `ask_with_sources()` also returns the retrieved chunks |
+| `src/pipeline.py` | RAG pipeline orchestration; combines FAISS and BM25 rankings using RRF, retrieves context, and provides `ask()` and `ask_with_sources()` methods |
 | `src/backend/wiki_backend.py` | Shared backend: resource lifecycle, article loading, autocomplete, question answering, and access to saved Q&A through `backend.qna` |
 | `src/backend/qna_manager.py` | Saves and loads question-and-answer records in the SQLite database, using the same connection as `SQLiteStore` |
 | `src/backend/article_context.py` | Retrieval stores and pipeline for one loaded article, including its chunk count |
@@ -225,11 +228,15 @@ Article sections are stored separately so that the original article can be displ
 
 ### 3. Retrieve relevant context
 
-When a question is submitted, wikiBOT searches for relevant chunks using semantic and keyword retrieval.
+When a question is submitted, wikiBOT retrieves relevant chunks using semantic and keyword-based search.
 
-- FAISS finds semantically similar chunks using embeddings.
-- BM25 finds chunks with relevant keyword matches.
-- Candidate selection and similarity filtering help determine which chunks are passed to the RAG pipeline.
+- **FAISS:** Finds semantically similar chunks using text embeddings.
+- **BM25:** Retrieves chunks based on keyword relevance.
+- **Similarity filtering:** Removes FAISS results below the configured similarity threshold.
+- **Reciprocal Rank Fusion (RRF):** Combines the ranked results from FAISS and BM25 using their positions in each result list rather than comparing their raw scores.
+- **Context selection:** Selects the highest-ranked unique chunks, up to the configured `top_k` value, for the language model.
+
+This hybrid approach combines semantic relevance with keyword matching, helping retrieve useful context for different types of questions.
 
 ### 4. Generate an answer
 
@@ -264,17 +271,19 @@ Records are matched to an article by title, ignoring case. Saving an identical q
 
 ## Retrieval Configuration
 
-The shared backend currently uses these default retrieval settings:
+The shared backend uses the following retrieval parameters:
 
 | Parameter | Default | Purpose |
 |---|---:|---|
 | `top_k` | `3` | Number of final chunks selected for the RAG context |
-| `candidate_k` | `10` | Number of semantic retrieval candidates requested |
-| `similarity_threshold` | `0.35` | Minimum configured semantic similarity score |
+| `candidate_k` | `10` | Number of candidate results requested from each retriever before final selection |
+| `similarity_threshold` | `0.35` | Minimum configured FAISS semantic similarity score |
 
 These settings are configurable when constructing `WikiBotBackend`.
 
-The similarity threshold applies to semantic similarity scores; keyword retrieval through BM25 is a separate retrieval mechanism.
+The similarity threshold applies only to FAISS semantic-search results. BM25 uses keyword-based relevance scoring, and its raw scores are not directly compared with FAISS scores.
+
+RRF combines the retrievers using their result rankings. The current implementation uses a rank constant of `60` to calculate reciprocal-rank contributions.
 
 ## SQLite Storage
 
@@ -332,7 +341,7 @@ Saved Q&A is implemented end to end: answers can be saved from the chat, are sto
 
 14. **FAISS Similarity Scoring and Threshold:** Added semantic similarity scores and a configurable threshold to help filter low-relevance retrieval results.
 
-15. **BM25 Hybrid Retrieval:** Added BM25 keyword search alongside FAISS semantic retrieval to improve coverage for exact terms and keyword-heavy questions.
+15. **Hybrid Retrieval and RRF Ranking:** Added BM25 keyword search alongside FAISS semantic retrieval, then combined the ranked results using Reciprocal Rank Fusion (RRF). FAISS results are filtered using a configurable similarity threshold, and RRF combines the rankings to select relevant context chunks without directly comparing raw scores.
 
 16. **Shared Backend Architecture:** Refactored wikiBOT to introduce a shared `WikiBotBackend` responsible for managing the core RAG components and their lifecycle. The backend now owns SQLite knowledge storage, Wikipedia knowledge management, embedding and LLM resources, FAISS and BM25 retrieval stores, and RAG pipeline construction, while the CLI and Streamlit layers focus on user interaction. This also enables expensive resources such as the embedding model and LLM to remain loaded and be reused across multiple article loads instead of being recreated by the interface layer.
 
@@ -346,7 +355,7 @@ Saved Q&A is implemented end to end: answers can be saved from the chat, are sto
 
 21. **Article Reader Improvements:** Reworked the Article Reader page. Added summary stats (sections, words, retrieval chunks), an "Open on Wikipedia" link, a section filter, an "Expand all" toggle, and an "Ask about this section" button on each section. The button uses a callback that sets the chat's pending question and switches the navigation to the chat page, so the question is answered immediately. Added `chunk_count` to `ArticleContext` and a `current_chunk_count` property on `WikiBotBackend` to support the stats.
 
-22. **Persistent Saved Q&A:** Implemented saving and loading of Q&A records. Added `QnAManager` in `src/backend/qna_manager.py`, which owns the `qna` table and shares the existing SQLite connection, so Q&A logic stays out of `SQLiteStore` and `WikiBotBackend`. The backend exposes it as `backend.qna`, and the `add_qna` and `get_qna` helpers now call it instead of printing placeholders. The chat's "Add to Q&A" button reports whether a record was newly saved or already existed, and the Q&A page lists the current article's records from the database.
+22. **Persistent Saved Q&A:** Implemented end-to-end saving and retrieval of question-and-answer records. `QnAManager` manages Q&A records in SQLite using the shared database connection. Answers can be saved from the chat, duplicate records are handled, and saved Q&A records can be reviewed for the selected article across application sessions.
 
 ## Planned Improvements
 
