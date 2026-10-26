@@ -2,6 +2,7 @@
 
 import time
 
+from src.backend.qna_manager import QnAManager
 from src.data.wikipedia import (
     WikipediaArticleError,
     search_wikipedia_articles,
@@ -46,6 +47,9 @@ class WikiBotBackend:
         # Article autocomplete cache.
         self._suggestion_cache = {}
         self._suggestion_cache_ttl = 300
+
+        # Saved Q&A lives in the same SQLite database.
+        self.qna = QnAManager(self.database.connection)
 
     @property
     def current_chunk_count(self) -> int:

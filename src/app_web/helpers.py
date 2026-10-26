@@ -203,29 +203,16 @@ def render_article_sections(
 
 def add_qna(backend, title: str, question: str, answer: str) -> bool:
     """
-    Add a Q&A record through the backend.
+    Save a Q&A record through the backend.
 
-    The actual backend implementation will be added later.
+    Returns True when a new record was stored and False when an identical
+    record had already been saved.
     """
 
-    # TODO: Call backend API to persist the Q&A record.
-    # backend.add_qna(
-    #     title=title,
-    #     question=question,
-    #     answer=answer,
-    # )
-    print("adding qna record:", title, question, answer)
-    return True
+    return backend.qna.add(title, question, answer)
 
 
-def get_qna(backend, title: str | None = None) -> list[dict[str, str]]:
-    """
-    Fetch saved Q&A records through the backend.
+def get_qna(backend, title: str | None = None) -> list[dict]:
+    """Fetch the saved Q&A records of an article, newest first."""
 
-    The actual backend implementation will be added later.
-    """
-
-    # TODO: Call backend API to fetch saved Q&A records.
-    # return backend.get_qna(title=title)
-    print("fetching qna records for:", title)
-    return []
+    return backend.qna.get(title)

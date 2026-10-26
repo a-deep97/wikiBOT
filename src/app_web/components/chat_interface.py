@@ -36,7 +36,7 @@ def _save_to_qna(backend, article_title: str, index: int) -> None:
     message = st.session_state.messages[index]
 
     try:
-        add_qna(
+        created = add_qna(
             backend=backend,
             title=article_title,
             question=message["question"],
@@ -47,7 +47,10 @@ def _save_to_qna(backend, article_title: str, index: int) -> None:
         return
 
     message["saved"] = True
-    st.toast("Saved to Q&A", icon="📚")
+    st.toast(
+        "Saved to Q&A" if created else "Already in your Q&A",
+        icon="📚",
+    )
 
 
 # ---------------------------------------------------------
