@@ -118,3 +118,21 @@ class QnAManager:
             }
             for row in cursor.fetchall()
         ]
+
+    def delete(self, qna_id: int) -> bool:
+        """
+        Delete a saved Q&A record by its ID.
+
+        Returns:
+            True if a record was deleted, False if it was not found.
+        """
+        if not isinstance(qna_id, int) or isinstance(qna_id, bool) or qna_id <= 0:
+            raise ValueError("Q&A ID must be a positive integer.")
+
+        cursor = self.connection.execute(
+            "DELETE FROM qna WHERE id = ?",
+            (qna_id,),
+        )
+        self.connection.commit()
+
+        return cursor.rowcount > 0

@@ -216,3 +216,7 @@ def get_qna(backend, title: str | None = None) -> list[dict]:
     """Fetch the saved Q&A records of an article, newest first."""
 
     return backend.qna.get(title)
+
+def delete_qna(backend, qna_id: int) -> bool:
+    """Delete a saved Q&A record through the backend."""
+    return backend.qna.delete(qna_id)

@@ -130,7 +130,8 @@ wikiBOT/
 | `src/cli.py` | Command-line interaction with wikiBOT |
 | `src/pipeline.py` | RAG pipeline orchestration; combines FAISS and BM25 rankings using RRF, retrieves context, and provides `ask()` and `ask_with_sources()` methods |
 | `src/backend/wiki_backend.py` | Shared backend: resource lifecycle, article loading, autocomplete, question answering, and access to saved Q&A through `backend.qna` |
-| `src/backend/qna_manager.py` | Saves and loads question-and-answer records in the SQLite database, using the same connection as `SQLiteStore` |
+| `src/backend/qna_manager.py` | Saves, retrieves, and deletes Q&A records in SQLite using the shared database connection. Prevents duplicate records and supports deletion by unique record ID. |
+
 | `src/backend/article_context.py` | Retrieval stores and pipeline for one loaded article, including its chunk count |
 | `src/app_web/wikibot.py` | Streamlit entry point, model selection, and article loading |
 | `src/app_web/components/` | Streamlit UI sections: sidebar, search, article reader, chat, and Q&A |
@@ -227,17 +228,19 @@ The knowledge manager checks SQLite for cached article data. If the article is a
 
 Article sections are stored separately so that the original article can be displayed in the interface while chunks remain available for retrieval.
 
+
 ### 3. Retrieve relevant context
 
-When a question is submitted, wikiBOT retrieves relevant chunks using semantic and keyword-based search.
+When a question is submitted, wikiBOT retrieves relevant text chunks using hybrid retrieval, combining semantic search and keyword search.
 
-- **FAISS:** Finds semantically similar chunks using text embeddings.
-- **BM25:** Retrieves chunks based on keyword relevance.
-- **Similarity filtering:** Removes FAISS results below the configured similarity threshold.
-- **Reciprocal Rank Fusion (RRF):** Combines the ranked results from FAISS and BM25 using their positions in each result list rather than comparing their raw scores.
-- **Context selection:** Selects the highest-ranked unique chunks, up to the configured `top_k` value, for the language model.
+- **FAISS semantic retrieval:** Uses text embeddings to find chunks that are semantically similar to the question.
+- **BM25 keyword retrieval:** Finds chunks with relevant keyword matches, helping with exact terms and names.
+- **Similarity filtering:** Applies the configured similarity threshold to FAISS results.
+- **Reciprocal Rank Fusion (RRF):** Combines the ranked FAISS and BM25 results into a unified ranking.
+- **Context selection:** Selects the top-ranked chunks to provide relevant context to the language model.
 
-This hybrid approach combines semantic relevance with keyword matching, helping retrieve useful context for different types of questions.
+This approach combines semantic relevance with keyword matching to improve retrieval coverage.
+
 
 ### 4. Generate an answer
 
@@ -262,13 +265,24 @@ The **Article Reader** page shows the loaded article's sections in collapsible p
 - **Expand all:** A toggle opens or collapses every section at once. The Introduction opens by default when no filter is active.
 - **Ask about this section:** Each section has a button that switches to the chat and submits a question about it, for example "What does the article say about Philosophy (Design)?". The Introduction maps to a summary question.
 
-### 6. Save and review Q&A records
 
-Use **Add to Q&A** under any chat answer to save that question and answer for the current article. The UI helper `add_qna` passes the record to `QnAManager` (available as `backend.qna`), which stores it in the `qna` table of the SQLite database.
+### 6. Save, review, and delete Q&A records
 
-The **Q&A** page lists the saved records for the current article, newest first. It reads them from the database every time it is shown, so saved records are available whenever the article is loaded again, including after restarting the application.
+Use **Add to Q&A** under a chat answer to save the question and answer for the current article. The UI helper `add_qna` passes the record to `QnAManager`, accessible through `backend.qna`, which stores it in the `qna` table of the SQLite database.
 
-Records are matched to an article by title, ignoring case. Saving an identical question and answer for the same article twice stores only one record.
+The **Q&A** page lists saved records for the current article, newest first. Records persist across application restarts because they are stored in SQLite.
+
+**Available actions:**
+
+- **Save:** Save a question and its answer for the current article.
+- **Duplicate prevention:** Saving an identical question and answer for the same article does not create another record.
+- **Review:** Expand a saved record to view its answer.
+- **Delete:** Select a record's Delete button to request deletion.
+- **Deletion confirmation:** Confirm the action to permanently delete the selected record, or cancel to keep it.
+- **Automatic refresh:** After deletion, the Q&A list refreshes to reflect the database changes.
+
+Each record has a unique database ID. Deletion uses this ID to target the selected record without deleting other saved Q&A records.
+
 
 ## Retrieval Configuration
 
@@ -304,6 +318,7 @@ The current storage layer manages:
 
 SQLite allows previously processed articles to be reused across application sessions. Existing cached articles can also be supplemented with section data when that data is missing.
 
+
 ## Current Development Status
 
 The core RAG workflow is implemented, including Wikipedia data ingestion, text chunking, embeddings, FAISS search, BM25 retrieval, SQLite caching, language model integration, and a shared backend.
@@ -311,6 +326,8 @@ The core RAG workflow is implemented, including Wikipedia data ingestion, text c
 The Streamlit interface supports article autocomplete, automatic article loading, an article reader with filtering and per-section questions, chatbot interaction with source citations and starter questions, and a separate QnA navigation section.
 
 Saved Q&A is implemented end to end: answers can be saved from the chat, are stored in SQLite, and are listed on the Q&A page.
+
+Saved Q&A management supports saving, listing, duplicate prevention, and deletion. Users can delete individual saved records from the Q&A page after confirmation. Deletions are committed to SQLite and remain effective after restarting the application.
 
 ## Development History
 
@@ -356,11 +373,11 @@ Saved Q&A is implemented end to end: answers can be saved from the chat, are sto
 
 21. **Article Reader Improvements:** Reworked the Article Reader page. Added summary stats (sections, words, retrieval chunks), an "Open on Wikipedia" link, a section filter, an "Expand all" toggle, and an "Ask about this section" button on each section. The button uses a callback that sets the chat's pending question and switches the navigation to the chat page, so the question is answered immediately. Added `chunk_count` to `ArticleContext` and a `current_chunk_count` property on `WikiBotBackend` to support the stats.
 
-<<<<<<< HEAD
 22. **Persistent Saved Q&A:** Implemented end-to-end saving and retrieval of question-and-answer records. `QnAManager` manages Q&A records in SQLite using the shared database connection. Answers can be saved from the chat, duplicate records are handled, and saved Q&A records can be reviewed for the selected article across application sessions.
 
-=======
->>>>>>> 3b0586f6b35ffb32c6a0d1877c05f412bfce040e
+23. **Q&A Deletion:** Extended saved Q&A management to support deleting individual question-and-answer records from the Streamlit interface. Users must confirm deletion before the selected record is permanently removed from SQLite. Other saved records remain unaffected.
+
+
 ## Planned Improvements
 
 - Add Q&A management features such as removing records, searching, and exporting.
