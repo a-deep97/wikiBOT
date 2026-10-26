@@ -46,6 +46,47 @@ st.set_page_config(
 apply_global_styles()
 
 
+
+st.markdown(
+    """
+    <style>
+    /* Navigation buttons */
+    div[data-testid="stHorizontalBlock"]
+    div[data-testid="stButton"] button {
+        min-height: 64px;
+        border-radius: 12px;
+        font-size: 18px;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+
+    /* Active navigation tab: blue */
+    div[data-testid="stHorizontalBlock"]
+    div[data-testid="stButton"] button[kind="primary"] {
+        background-color: #2563EB !important;
+        color: white !important;
+        border: 1px solid #2563EB !important;
+    }
+
+    /* Inactive navigation tabs */
+    div[data-testid="stHorizontalBlock"]
+    div[data-testid="stButton"] button[kind="secondary"] {
+        background-color: transparent;
+        color: var(--text-color);
+        border: 1px solid #D1D5DB;
+    }
+
+    /* Hover effect */
+    div[data-testid="stHorizontalBlock"]
+    div[data-testid="stButton"] button:hover {
+        border-color: #2563EB !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 # ---------------------------------------------------------
 # 3. Model selection
 # ---------------------------------------------------------
@@ -160,14 +201,56 @@ def search_articles(query: str) -> list[str]:
     return results or []
 
 
+
 # ---------------------------------------------------------
-# 7. Sidebar navigation and article search
+# 7. Sidebar article search and top navigation
 # ---------------------------------------------------------
 
-active_section, selected_article = render_sidebar(
+selected_article = render_sidebar(
     search_function=search_articles,
     recent_searches=st.session_state.recent_searches,
 )
+
+st.markdown("## 🧠 wikiBOT")
+st.caption("Your Wikipedia research assistant")
+
+
+
+# Initialize the active page.
+if "active_section" not in st.session_state:
+    st.session_state.active_section = "📖 Article Reader"
+
+
+def set_active_section(section: str) -> None:
+    """Update the active navigation section."""
+    st.session_state.active_section = section
+
+
+# Top navigation buttons.
+nav1, nav2, nav3 = st.columns(3, gap="medium")
+
+sections = [
+    ("📖 Article Reader", nav1, "nav_article_reader"),
+    ("💬 Chat", nav2, "nav_chat"),
+    ("📚 QnA", nav3, "nav_qna"),
+]
+
+for section, column, button_key in sections:
+    with column:
+        st.button(
+            section,
+            key=button_key,
+            use_container_width=True,
+            type=(
+                "primary"
+                if st.session_state.active_section == section
+                else "secondary"
+            ),
+            on_click=set_active_section,
+            args=(section,),
+        )
+
+active_section = st.session_state.active_section
 
 
 # ---------------------------------------------------------

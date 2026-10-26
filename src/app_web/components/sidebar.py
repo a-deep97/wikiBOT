@@ -1,4 +1,5 @@
-"""Sidebar navigation for wikiBOT."""
+
+"""Sidebar article search for wikiBOT."""
 
 import streamlit as st
 
@@ -10,30 +11,17 @@ from src.app_web.components.search_panel import (
 def render_sidebar(
     search_function,
     recent_searches: list[str],
-) -> tuple[str, str | None]:
-    """
-    Render the application sidebar.
-
-    Returns:
-        A tuple containing the active page and selected article title.
-    """
+) -> str | None:
+    """Render the sidebar and return the selected article title."""
 
     with st.sidebar:
+        st.markdown("## 🧠 wikiBOT")
+        st.caption("Your Wikipedia research assistant")
+        st.divider()
 
         selected_article = render_search_panel(
             search_function=search_function,
             recent_searches=recent_searches,
         )
-        
-        active_section = st.radio(
-            "WORKSPACE",
-            options=[
-                "📖 Article Reader",
-                "💬 Chat",
-                "📚 QnA",
-            ],
-            key="active_section",
-            label_visibility="visible",
-        )
 
-    return active_section, selected_article
+    return selected_article
