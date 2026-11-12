@@ -84,10 +84,12 @@ wikiBOT/
 │   ├── cli.py
 │   ├── config.py
 │   ├── pipeline.py
+│   │
 │   ├── backend/
 │   │   ├── wiki_backend.py
 │   │   ├── article_context.py
 │   │   └── qna_manager.py
+│   │
 │   ├── app_web/
 │   │   ├── wikibot.py
 │   │   ├── helpers.py
@@ -99,29 +101,47 @@ wikiBOT/
 │   │       ├── article_reader.py
 │   │       ├── chat_interface.py
 │   │       └── qna_panel.py
+│   │
 │   ├── data/
 │   │   ├── wikipedia.py
 │   │   └── processor.py
+│   │
 │   ├── embeddings/
 │   │   └── embedder.py
+│   │
 │   ├── vector/
 │   │   ├── faiss_store.py
 │   │   └── bm25_store.py
+│   │
 │   ├── models/
 │   │   ├── data.py
 │   │   ├── model.py
 │   │   └── shared_resources.py
+│   │
 │   ├── database/
 │   │   ├── sqlite_store.py
-│   │   └── qna_store.py
+│   │   ├── qna_store.py
+│   │   ├── postgres_client.py
+│   │   ├── chat_manager.py
+│   │   └── message_manager.py
+│   │
+│   ├── services/
+│   │   ├── __init__.py
+│   │   └── auth_service.py
+│   │
 │   └── knowledge/
 │       └── manager.py
+│
 ├── tests/
 │   └── test_database.py
+│
 ├── data/
-│   └── wikibot.db        (created at runtime)
+│   └── wikibot.db                # Created at runtime
+│
+├── .env                          # Local Supabase credentials
+├── .gitignore
+├── requirements.txt
 └── README.md
-```
 
 ### Module Responsibilities
 
@@ -158,7 +178,10 @@ wikiBOT/
 - **Embeddings:** Sentence Transformers
 - **Vector search:** FAISS
 - **Keyword search:** BM25
-- **Database:** SQLite
+- **Database (Knowledge Storage):** SQLite
+- **Database (User Chats):** Supabase PostgreSQL
+- **Authentication:** Supabase Auth
+- **Database Security:** PostgreSQL Row Level Security (RLS)
 - **Language models:** Supported Hugging Face causal and sequence-to-sequence models
 - **Hardware acceleration:** PyTorch and CUDA, when available
 
@@ -319,6 +342,90 @@ The current storage layer manages:
 SQLite allows previously processed articles to be reused across application sessions. Existing cached articles can also be supplemented with section data when that data is missing.
 
 
+## Supabase Database and Authentication
+
+wikiBOT uses Supabase PostgreSQL alongside its existing SQLite database. Each database serves a separate purpose.
+
+### Database Responsibilities
+
+| Database | Responsibility |
+|---|---|
+| SQLite | Wikipedia articles, chunks, links, sections, and saved Q&A |
+| Supabase PostgreSQL | User conversations and chat messages |
+| Supabase Auth | User registration, authentication, and session management |
+
+### PostgreSQL Schema
+
+The Supabase database currently contains two application tables:
+
+**1. chats**
+
+Stores conversation metadata.
+
+| Column | Description |
+|---|---|
+| id | Unique conversation UUID |
+| user_id | Supabase authenticated user's UUID |
+| title | Conversation title |
+| article_title | Wikipedia article associated with the conversation |
+| model_key | Language model used for the conversation |
+| created_at | Conversation creation timestamp |
+| updated_at | Last conversation activity timestamp |
+
+**2. messages**
+
+Stores individual messages belonging to a conversation.
+
+| Column | Description |
+|---|---|
+| id | Unique message UUID |
+| chat_id | Reference to the parent conversation |
+| role | Message role: user or assistant |
+| content | Message content |
+| created_at | Message creation timestamp |
+
+Each conversation belongs to a user, and each message belongs to a conversation. Deleting a conversation also deletes its associated messages.
+
+Indexes support efficient retrieval of a user's recent conversations and chronological messages.
+
+A database trigger automatically updates the conversation's `updated_at` timestamp when a new message is inserted.
+
+### Authentication
+
+wikiBOT uses Supabase Auth for user authentication.
+
+The application follows an invite-only access model. Public registration is intended to remain disabled, and users are added through Supabase invitations.
+
+The authentication workflow is:
+
+1. An administrator invites a user through Supabase.
+2. The user completes the invitation and account setup.
+3. The user logs in through the wikiBOT Streamlit interface.
+4. Supabase authenticates the credentials and establishes a session.
+5. The authenticated session is used for database operations.
+6. Users can access only their own conversations and messages.
+
+### Row Level Security (RLS)
+
+Row Level Security is enabled on both `chats` and `messages`.
+
+Policies use the authenticated user's UUID (`auth.uid()`) to enforce ownership.
+
+- Users can view, create, update, and delete only their own conversations.
+- Users can view and insert messages only within conversations they own.
+- Users can delete messages only within conversations they own.
+
+These policies ensure that database access is restricted at the PostgreSQL level rather than relying exclusively on application-side checks.
+
+### Environment Configuration
+
+Supabase connection details are maintained in the project's `.env` file:
+
+```env
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+
+
 ## Current Development Status
 
 The core RAG workflow is implemented, including Wikipedia data ingestion, text chunking, embeddings, FAISS search, BM25 retrieval, SQLite caching, language model integration, and a shared backend.
@@ -377,6 +484,7 @@ Saved Q&A management supports saving, listing, duplicate prevention, and deletio
 
 23. **Q&A Deletion:** Extended saved Q&A management to support deleting individual question-and-answer records from the Streamlit interface. Users must confirm deletion before the selected record is permanently removed from SQLite. Other saved records remain unaffected.
 
+24. **Supabase Database and Authentication Foundation:** Introduced Supabase PostgreSQL for persistent user conversations and messages while retaining SQLite for Wikipedia knowledge storage and saved Q&A. Created the `chats` and `messages` tables with ownership relationships, indexes, timestamp management, and Row Level Security policies. Added a Supabase Python client and an authentication service foundation for invite-only user access. Streamlit login integration and persistent chat management are planned next.
 
 ## Planned Improvements
 

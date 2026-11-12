@@ -1,12 +1,15 @@
+#   Python dependencies for wikiBOT
 click
 wikipedia-api
 requests
 beautifulsoup4
 
+#   Vector search
 numpy
 faiss-cpu
 rank-bm25
 
+#   LLM APIs
 sentence-transformers
 transformers
 torch
@@ -14,6 +17,10 @@ huggingface-hub
 
 python-dotenv
 
+#   UI
 streamlit
 streamlit-searchbox
 streamlit-adjustable-columns
+
+#   Databases
+supabase
