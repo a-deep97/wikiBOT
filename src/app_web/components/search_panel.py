@@ -4,39 +4,29 @@ import streamlit as st
 from streamlit_searchbox import st_searchbox
 
 
-def render_search_panel(
-    search_function,
-    recent_searches: list[str],
-) -> str | None:
-    """Render autocomplete with recent articles in the dropdown."""
 
+def render_search_panel(search_function, recent_searches: list[str]) -> str | None:
     st.subheader("🔎 Find an article")
 
-    recent_options = recent_searches[:8]
+    recent_options = recent_searches[:20]
 
     def search_with_recents(query: str) -> list[str]:
-        """Show recent articles for an empty query."""
         if not query or not query.strip():
             return recent_options
-
         return search_function(query.strip())
 
-    recent_options = recent_searches[:20]
+    searchbox_version = st.session_state.get("searchbox_version", 0)
 
     selected_article = st_searchbox(
         search_function=search_with_recents,
         placeholder="Type a Wikipedia article...",
         label="Wikipedia article",
-        key="wiki_article_search",
+        key=f"wiki_article_search_{searchbox_version}",
         debounce=300,
         default_options=recent_options,
     )
 
-    pending_article = st.session_state.pop(
-        "pending_article",
-        None,
-    )
-
+    pending_article = st.session_state.pop("pending_article", None)
     if pending_article:
         selected_article = pending_article
 

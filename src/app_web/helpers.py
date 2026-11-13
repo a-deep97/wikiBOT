@@ -1,10 +1,10 @@
 import html
 
 import streamlit as st
-
+from src.backend.supabase_qna_manager import SupabaseQnAManager
 
 # Must match the option label used by the sidebar navigation radio.
-CHAT_SECTION = "💬 Chat"
+CHAT_SECTION = "Chat"
 
 def show_loading() -> None:
     """Show the wikiBOT loading message."""
@@ -201,22 +201,63 @@ def render_article_sections(
     return len(sections)
 
 
-def add_qna(backend, title: str, question: str, answer: str) -> bool:
-    """
-    Save a Q&A record through the backend.
 
-    Returns True when a new record was stored and False when an identical
-    record had already been saved.
-    """
+def _get_qna_manager(backend):
+    """Select Q&A storage based on authentication status."""
 
-    return backend.qna.add(title, question, answer)
+    client = st.session_state.get("supabase_client")
+    user = st.session_state.get("supabase_user")
+
+    # Authenticated users use Supabase.
+    if user:
+        if not client:
+            raise RuntimeError(
+                "Supabase client is unavailable for the authenticated user."
+            )
+
+        return SupabaseQnAManager(
+            client=client,
+            user_id=str(user.id),
+        )
+
+    # Anonymous users use local SQLite.
+    return backend.qna
 
 
-def get_qna(backend, title: str | None = None) -> list[dict]:
-    """Fetch the saved Q&A records of an article, newest first."""
+def add_qna(
+    backend,
+    title: str,
+    question: str,
+    answer: str,
+) -> bool:
+    """Save Q&A using the appropriate storage manager."""
 
-    return backend.qna.get(title)
+    manager = _get_qna_manager(backend)
 
-def delete_qna(backend, qna_id: int) -> bool:
-    """Delete a saved Q&A record through the backend."""
-    return backend.qna.delete(qna_id)
+    return manager.add(
+        title,
+        question,
+        answer,
+    )
+
+
+def get_qna(
+    backend,
+    title: str | None = None,
+) -> list[dict]:
+    """Fetch Q&A using the appropriate storage manager."""
+
+    manager = _get_qna_manager(backend)
+
+    return manager.get(title)
+
+
+def delete_qna(
+    backend,
+    qna_id: str | int,
+) -> bool:
+    """Delete Q&A using the appropriate storage manager."""
+
+    manager = _get_qna_manager(backend)
+
+    return manager.delete(qna_id)

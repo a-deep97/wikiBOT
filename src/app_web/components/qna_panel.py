@@ -25,6 +25,14 @@ def render_qna_panel(
         )
         return
 
+    # Saved Q&A is available only to authenticated users.
+    if not st.session_state.get("supabase_user"):
+        st.info(
+            "🔐 Please log in to view and save your Q&A. "
+            "You can continue using Wikipedia search and chat without logging in."
+        )
+        return
+
     st.caption(f"Current article: **{article_title}**")
 
     try:

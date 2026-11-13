@@ -15,11 +15,14 @@ from src.app_web.components.qna_panel import (
     render_qna_panel,
 )
 from src.app_web.components.sidebar import (
-    render_sidebar,
+    render_sidebar, render_auth_section
 )
 from src.app_web.search_history import (
     add_search,
     load_search_history,
+)
+from src.app_web.components.history_panel import (
+    render_history_panel,
 )
 from src.app_web.styles import apply_global_styles
 
@@ -113,6 +116,7 @@ default_index = (
 )
 
 with st.sidebar:
+    render_auth_section()
     st.markdown("# 🧠 wikiBOT")
     st.caption("Your Wikipedia research assistant")
     st.divider()
@@ -161,6 +165,7 @@ if (
     # A model change starts a fresh article/chat context.
     st.session_state.article_title = None
     st.session_state.messages = []
+    st.session_state.active_chat_id = None
 
 backend = st.session_state.backend
 
@@ -177,9 +182,14 @@ if "article_title" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+if "active_chat_id" not in st.session_state:
+    st.session_state.active_chat_id = None
+
 if "recent_searches" not in st.session_state:
     st.session_state.recent_searches = load_search_history()
 
+if "pending_delete_chat_id" not in st.session_state:
+    st.session_state.pending_delete_chat_id = None
 
 # ---------------------------------------------------------
 # 6. Wikipedia autocomplete
@@ -218,7 +228,7 @@ st.caption("Your Wikipedia research assistant")
 
 # Initialize the active page.
 if "active_section" not in st.session_state:
-    st.session_state.active_section = "📖 Article Reader"
+    st.session_state.active_section = "Article Reader"
 
 
 def set_active_section(section: str) -> None:
@@ -227,12 +237,13 @@ def set_active_section(section: str) -> None:
 
 
 # Top navigation buttons.
-nav1, nav2, nav3 = st.columns(3, gap="medium")
+nav1, nav2, nav3, nav4 = st.columns(4, gap="medium")
 
 sections = [
-    ("📖 Article Reader", nav1, "nav_article_reader"),
-    ("💬 Chat", nav2, "nav_chat"),
-    ("📚 QnA", nav3, "nav_qna"),
+    ("Article Reader", nav1, "nav_article_reader"),
+    ("Chat", nav2, "nav_chat"),
+    ("QnA", nav3, "nav_qna"),
+    ("History", nav4, "nav_history"),
 ]
 
 for section, column, button_key in sections:
@@ -262,6 +273,10 @@ if isinstance(selected_article, str):
 else:
     article_to_load = None
 
+# Ignore the previous sidebar selection when restoring a conversation.
+if st.session_state.pop("restoring_chat", False):
+    article_to_load = None
+
 if (
     article_to_load
     and article_to_load
@@ -286,6 +301,7 @@ if (
 
         # A newly loaded article starts a new conversation.
         st.session_state.messages = []
+        st.session_state.active_chat_id = None
 
         # Persist the recent-article history.
         st.session_state.recent_searches = add_search(loaded_title)
@@ -307,25 +323,31 @@ if (
 
 article_title = st.session_state.get("article_title")
 
-if active_section == "📖 Article Reader":
+if active_section == "Article Reader":
 
     render_article_reader(
         backend=backend,
         article_title=article_title,
     )
 
-elif active_section == "💬 Chat":
+elif active_section == "Chat":
 
     render_chat_interface(
         backend=backend,
         article_title=article_title,
     )
 
-elif active_section == "📚 QnA":
+elif active_section == "QnA":
 
     render_qna_panel(
         backend=backend,
         article_title=article_title,
+    )
+
+elif active_section == "History":
+
+    render_history_panel(
+        backend=backend,
     )
 
 else:

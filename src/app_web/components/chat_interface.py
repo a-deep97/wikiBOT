@@ -11,6 +11,7 @@ from src.app_web.helpers import (
     section_question,
 )
 from src.app_web.styles import render_page_header
+from src.backend.chat_manager import ChatManager
 
 NO_ANSWER_TEXT = "I couldn't generate an answer for that question."
 SNIPPET_LENGTH = 400
@@ -28,6 +29,7 @@ def _queue_question(question: str) -> None:
 
 def _clear_chat() -> None:
     st.session_state.messages = []
+    st.session_state.active_chat_id = None
 
 
 def _save_to_qna(backend, article_title: str, index: int) -> None:
@@ -56,6 +58,60 @@ def _save_to_qna(backend, article_title: str, index: int) -> None:
 # ---------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------
+
+def _get_chat_manager() -> ChatManager | None:
+    """Return a chat manager for the authenticated user."""
+
+    client = st.session_state.get("supabase_client")
+    user = st.session_state.get("supabase_user")
+
+    if not client or not user:
+        return None
+
+    return ChatManager(
+        client=client,
+        user_id=str(user.id),
+    )
+
+
+
+
+def _persist_message(role, content, sources=None):
+    """Persist messages only for authenticated users."""
+
+    manager = _get_chat_manager()
+
+    # Anonymous conversations are not persisted.
+    if manager is None:
+        return
+
+    try:
+        chat_id = st.session_state.get("active_chat_id")
+
+        # A conversation should be created only when its first
+        # user message is sent.
+        if not chat_id:
+            if role != "user":
+                return
+
+            chat_id = manager.create_chat(
+                title=content[:255],
+                article_title=st.session_state.article_title,
+                model_key=st.session_state.model_key,
+            )
+
+            st.session_state.active_chat_id = chat_id
+
+        manager.add_message(
+            chat_id=chat_id,
+            role=role,
+            content=content,
+            sources=sources,
+        )
+
+    except Exception as error:
+        st.warning(f"Could not save conversation: {error}")
+
 
 def _starter_questions(
     backend,
@@ -238,6 +294,7 @@ def _answer_question(backend, question: str) -> bool:
                 "Searching the article and preparing an answer..."
             ):
                 result = backend.ask_with_sources(question)
+
         except Exception as error:
             st.error(f"Unable to answer the question: {error}")
             return False
@@ -249,20 +306,28 @@ def _answer_question(backend, question: str) -> bool:
     elif not isinstance(answer, str):
         answer = str(answer)
 
+    sources = [
+        {
+            "section": source.get("section", ""),
+            "text": chunk_body(source.get("content", "")),
+        }
+        for source in result.get("sources", [])
+    ]
+
     st.session_state.messages.append(
         {
             "role": "assistant",
             "content": answer,
             "question": question,
             "saved": False,
-            "sources": [
-                {
-                    "section": source.get("section", ""),
-                    "text": chunk_body(source.get("content", "")),
-                }
-                for source in result.get("sources", [])
-            ],
+            "sources": sources,
         }
+    )
+
+    _persist_message(
+        role="assistant",
+        content=answer,
+        sources=sources,
     )
 
     return True
@@ -307,8 +372,16 @@ def render_chat_interface(
     question = st.session_state.pop("pending_question", None) or typed_question
 
     if question:
-        messages.append({"role": "user", "content": question})
-
+        messages.append(
+            {
+                "role": "user",
+                "content": question,
+            }
+        )
+        _persist_message(
+            role="user",
+            content=question,
+        )
     if messages:
         _render_toolbar(article_title, messages)
     else:

@@ -24,3 +24,7 @@ streamlit-adjustable-columns
 
 #   Databases
 supabase
+
+# Testing
+
+pytest
